@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeMute
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,12 +34,14 @@ class MainActivity : ComponentActivity() {
     private lateinit var hapticManager: HapticManager
     private lateinit var audioManager: AudioManager
     private lateinit var metronomeManager: MetronomeManager
+    private lateinit var progressManager: ProgressManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         hapticManager = HapticManager(this)
         audioManager = AudioManager()
         metronomeManager = MetronomeManager(120)
+        progressManager = ProgressManager(this)
 
         enableEdgeToEdge()
         setContent {
@@ -47,7 +50,32 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    RhythmPlayScreen(hapticManager, audioManager, metronomeManager)
+                    var currentScreen by remember { mutableStateOf<Screen>(Screen.Play(null)) }
+
+                    when (val screen = currentScreen) {
+                        is Screen.Play -> {
+                            RhythmPlayScreen(
+                                hapticManager,
+                                audioManager,
+                                metronomeManager,
+                                progressManager,
+                                screen.lesson,
+                                onLessonSelected = { currentScreen = Screen.Lessons },
+                                onLessonComplete = { lesson, accuracy ->
+                                    progressManager.recordAttempt(lesson.id, accuracy)
+                                }
+                            )
+                        }
+                        is Screen.Lessons -> {
+                            LessonScreen(
+                                progressManager,
+                                onLessonSelected = { lesson ->
+                                    currentScreen = Screen.Play(lesson)
+                                },
+                                onBack = { currentScreen = Screen.Play(null) }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -62,11 +90,20 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+sealed class Screen {
+    data class Play(val lesson: Lesson?) : Screen()
+    object Lessons : Screen()
+}
+
 @Composable
 fun RhythmPlayScreen(
     hapticManager: HapticManager,
     audioManager: AudioManager,
-    metronomeManager: MetronomeManager
+    metronomeManager: MetronomeManager,
+    progressManager: ProgressManager,
+    currentLesson: Lesson?,
+    onLessonSelected: () -> Unit,
+    onLessonComplete: (Lesson, Float) -> Unit
 ) {
     var isHolding by remember { mutableStateOf(false) }
     var holdDurationMs by remember { mutableStateOf(0L) }
@@ -164,6 +201,18 @@ fun RhythmPlayScreen(
             ) {
                 Text("♪", fontSize = 20.sp, color = if (beatEnabled) Color.Green else MaterialTheme.colorScheme.surfaceVariant)
             }
+
+            IconButton(
+                onClick = { onLessonSelected() },
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.School,
+                    contentDescription = "Lessons",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
 
         // BPM Slider
@@ -210,6 +259,16 @@ fun RhythmPlayScreen(
                             isHolding = false
                             hapticManager.stop()
                             audioManager.stopTone()
+
+                            // Record lesson attempt if active
+                            if (currentLesson != null) {
+                                val accuracy = progressManager.calculateAccuracy(
+                                    currentLesson.targetNoteLength.durationMs,
+                                    holdDurationMs
+                                )
+                                onLessonComplete(currentLesson, accuracy)
+                            }
+
                             holdDurationMs = 0
                         }
                     )
