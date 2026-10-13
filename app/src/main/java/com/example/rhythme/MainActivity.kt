@@ -6,7 +6,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lightbulb
@@ -119,7 +129,8 @@ fun RhythmPlayScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .padding(16.dp),
-        verticalArrangement = Arrangement.SpaceBetween
+        verticalArrangement = Arrangement.Top,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Top bar: toggles
         Row(
@@ -172,6 +183,7 @@ fun RhythmPlayScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp)
+                .height(60.dp)
                 .alpha(if (beatEnabled) 1f else 0.3f)
         ) {
             Text("BPM: ${bpm.toInt()}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -183,6 +195,9 @@ fun RhythmPlayScreen(
                 enabled = beatEnabled
             )
         }
+
+        // Spacer to push circle to center
+        Spacer(modifier = Modifier.weight(1f))
 
         // Center: big hold pad with beat pulse
         val beatSize = 240.dp * (1f + beatPulse * 0.1f)
@@ -201,7 +216,6 @@ fun RhythmPlayScreen(
         Box(
             modifier = Modifier
                 .size(beatSize)
-                .align(Alignment.CenterHorizontally)
                 .background(color = lightColor, shape = CircleShape)
                 .pointerInput(Unit) {
                     detectTapGestures(
@@ -236,12 +250,12 @@ fun RhythmPlayScreen(
             }
         }
 
+        // Spacer to push info to bottom
+        Spacer(modifier = Modifier.weight(1f))
+
         // Bottom: info
         Text(
             text = "Hold to play. Listen to the beat.",
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .padding(bottom = 16.dp),
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
