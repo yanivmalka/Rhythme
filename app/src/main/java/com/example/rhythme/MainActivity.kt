@@ -128,9 +128,18 @@ fun RhythmPlayScreen(
     var lightEnabled by remember { mutableStateOf(true) }
     var beatEnabled by remember { mutableStateOf(true) }
     var startTime by remember { mutableStateOf(0L) }
-    var bpm by remember { mutableStateOf(120f) }
+    var bpm by remember { mutableStateOf(currentLesson?.targetBpm?.toFloat() ?: 120f) }
     var beatTick by remember { mutableStateOf(0) }
     val ripple = remember { Animatable(1f) }
+
+    // Lesson state: latest values for the long-lived gesture handler, last result, progress
+    val lesson by rememberUpdatedState(currentLesson)
+    var lastResult by remember { mutableStateOf<Pair<Long, Float>?>(null) } // held ms, accuracy
+    var lessonProgress by remember {
+        mutableStateOf(currentLesson?.let { progressManager.getProgress(it.id) })
+    }
+    // Note lengths are defined at 120 BPM; scale them to the current tempo
+    fun targetMsFor(l: Lesson): Long = l.targetNoteLength.durationMs * 120 / bpm.toInt()
 
     // Beat clock on the main thread; restarts cleanly when BPM changes
     LaunchedEffect(beatEnabled, bpm.toInt()) {
@@ -251,6 +260,25 @@ fun RhythmPlayScreen(
             )
         }
 
+        // Lesson banner - fixed height so the layout never shifts
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            currentLesson?.let { l ->
+                Text(l.title, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
+                val status = if (lessonProgress?.isMastered == true) "Mastered ✓"
+                    else "Streak ${lessonProgress?.streak ?: 0}/3"
+                Text(
+                    "Target: hold ${String.format("%.2f", targetMsFor(l) / 1000.0)}s  ·  $status",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         // Spacer to push circle to center
         Spacer(modifier = Modifier.weight(1f))
 
@@ -284,13 +312,14 @@ fun RhythmPlayScreen(
                             hapticManager.stop()
                             audioManager.stopTone()
 
-                            // Record lesson attempt if active
-                            if (currentLesson != null) {
-                                val accuracy = progressManager.calculateAccuracy(
-                                    currentLesson.targetNoteLength.durationMs,
-                                    holdDurationMs
-                                )
-                                onLessonComplete(currentLesson, accuracy)
+                            // Record lesson attempt if active, using the exact hold time
+                            // (holdDurationMs only refreshes every 50ms)
+                            lesson?.let { l ->
+                                val heldMs = System.currentTimeMillis() - startTime
+                                val accuracy = progressManager.calculateAccuracy(targetMsFor(l), heldMs)
+                                onLessonComplete(l, accuracy)
+                                lastResult = heldMs to accuracy
+                                lessonProgress = progressManager.getProgress(l.id)
                             }
 
                             holdDurationMs = 0
@@ -340,11 +369,21 @@ fun RhythmPlayScreen(
         // Spacer to push info to bottom
         Spacer(modifier = Modifier.weight(1f))
 
-        // Bottom: info
+        // Bottom: info, or the last attempt's result during a lesson
+        val result = lastResult
         Text(
-            text = "Hold to play. Listen to the beat.",
+            text = when {
+                currentLesson == null -> "Hold to play. Listen to the beat."
+                result == null -> "Hold for the target time, then release."
+                else -> "You held ${String.format("%.2f", result.first / 1000.0)}s  ·  ${(result.second * 100).toInt()}%"
+            },
             fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = when {
+                result == null || currentLesson == null -> MaterialTheme.colorScheme.onSurfaceVariant
+                result.second >= 0.8f -> Color(0xFF66DD77)
+                result.second >= 0.5f -> Color(0xFFFFC857)
+                else -> Color(0xFFFF6B6B)
+            }
         )
     }
 }

@@ -51,17 +51,13 @@ class ProgressManager(context: Context) {
         return LessonCurriculum.lessons.map { getProgress(it.id) }
     }
 
+    // Scored relative to the note length so short and long notes are judged equally:
+    // within 5% of target = 100%, falling linearly to 0% at 45% off.
+    // The 80% mastery bar therefore means landing within ~13% of the target.
     fun calculateAccuracy(targetDurationMs: Long, actualDurationMs: Long): Float {
-        val tolerance = 100L // +/- 100ms tolerance
-        val diff = abs(targetDurationMs - actualDurationMs)
-
-        return when {
-            diff <= tolerance -> 1.0f
-            diff <= tolerance * 2 -> 0.9f
-            diff <= tolerance * 3 -> 0.8f
-            diff <= tolerance * 4 -> 0.7f
-            else -> maxOf(0f, 1.0f - (diff.toFloat() / targetDurationMs.toFloat()))
-        }
+        if (targetDurationMs <= 0) return 0f
+        val error = abs(targetDurationMs - actualDurationMs).toFloat() / targetDurationMs
+        return (1f - (error - 0.05f) / 0.4f).coerceIn(0f, 1f)
     }
 
     private fun saveProgress(progress: LessonProgress) {
