@@ -4,7 +4,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -88,25 +92,26 @@ fun RhythmPlayScreen(
     var beatEnabled by remember { mutableStateOf(true) }
     var startTime by remember { mutableStateOf(0L) }
     var bpm by remember { mutableStateOf(120f) }
-    var beatPulse by remember { mutableStateOf(0f) }
+    var beatTick by remember { mutableStateOf(0) }
+    val ripple = remember { Animatable(1f) }
 
-    // Beat pulse animation
-    LaunchedEffect(beatEnabled, bpm) {
+    // Beat clock on the main thread; restarts cleanly when BPM changes
+    LaunchedEffect(beatEnabled, bpm.toInt()) {
+        metronomeManager.stop()
         if (beatEnabled) {
-            metronomeManager.setBpm(bpm.toInt())
-            metronomeManager.start {
-                beatPulse = 1f
+            val intervalMs = 60000L / bpm.toInt()
+            while (true) {
+                beatTick++
+                kotlinx.coroutines.delay(intervalMs)
             }
-        } else {
-            metronomeManager.stop()
         }
     }
 
-    // Beat pulse decay
-    LaunchedEffect(beatPulse) {
-        if (beatPulse > 0f) {
-            kotlinx.coroutines.delay(100)
-            beatPulse *= 0.8f
+    // Smooth ring ripple on each beat (circle itself never moves)
+    LaunchedEffect(beatTick) {
+        if (beatTick > 0) {
+            ripple.snapTo(0f)
+            ripple.animateTo(1f, animationSpec = tween(durationMillis = 450, easing = LinearOutSlowInEasing))
         }
     }
 
@@ -201,7 +206,6 @@ fun RhythmPlayScreen(
         Spacer(modifier = Modifier.weight(1f))
 
         // Center: big hold pad with beat pulse
-        val pulseScale = 1f + beatPulse * 0.1f
         val lightColor = if (lightEnabled && isHolding) {
             val progress = min(1f, holdDurationMs / 4000f)
             Color(
@@ -236,14 +240,25 @@ fun RhythmPlayScreen(
                 },
             contentAlignment = Alignment.Center
         ) {
-            // Inner animated circle
+            // Beat ring: expands and fades behind the circle (draw-only, no layout change)
+            if (beatEnabled) {
+                Box(
+                    modifier = Modifier
+                        .size(240.dp)
+                        .graphicsLayer {
+                            val p = ripple.value
+                            scaleX = 1f + 0.15f * p
+                            scaleY = 1f + 0.15f * p
+                            alpha = 1f - p
+                        }
+                        .border(width = 4.dp, color = Color(0xFF7FD4FF), shape = CircleShape)
+                )
+            }
+
+            // Main circle: fixed size, never moves
             Box(
                 modifier = Modifier
                     .size(240.dp)
-                    .graphicsLayer {
-                        scaleX = pulseScale
-                        scaleY = pulseScale
-                    }
                     .background(color = lightColor, shape = CircleShape),
                 contentAlignment = Alignment.Center
             ) {
