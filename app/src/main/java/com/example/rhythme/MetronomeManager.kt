@@ -70,7 +70,7 @@ class MetronomeManager(var bpm: Int = 120) {
                 var phase = 0.0
 
                 for (i in 0 until bufferSize) {
-                    val sample = (sin(phase) * 32767 * 0.3).toShort()
+                    val sample = (sin(phase) * 32767 * 0.3).toInt().toShort()
                     audioBuffer[i] = sample
                     phase += 2.0 * PI * beepFrequency / sampleRate
                 }

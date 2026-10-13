@@ -44,7 +44,7 @@ class AudioManager {
 
                 while (isPlaying) {
                     for (i in 0 until bufferSize) {
-                        val sample = (sin(phase) * 32767 * volume).toShort()
+                        val sample = (sin(phase) * 32767 * volume).toInt().toShort()
                         audioBuffer[i] = sample
                         phase += 2.0 * PI * frequency / sampleRate
                         if (phase > 2.0 * PI) phase -= 2.0 * PI
