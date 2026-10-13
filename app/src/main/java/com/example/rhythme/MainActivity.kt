@@ -22,6 +22,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
@@ -166,17 +167,21 @@ fun RhythmPlayScreen(
             }
         }
 
-        // BPM Slider
-        if (beatEnabled) {
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                Text("BPM: ${bpm.toInt()}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Slider(
-                    value = bpm,
-                    onValueChange = { bpm = it },
-                    valueRange = 40f..180f,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+        // BPM Slider - always reserve space, show only when beat enabled
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
+                .alpha(if (beatEnabled) 1f else 0.3f)
+        ) {
+            Text("BPM: ${bpm.toInt()}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Slider(
+                value = bpm,
+                onValueChange = { if (beatEnabled) bpm = it },
+                valueRange = 40f..180f,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = beatEnabled
+            )
         }
 
         // Center: big hold pad with beat pulse
