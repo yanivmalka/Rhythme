@@ -42,46 +42,8 @@ class MetronomeManager(private var _bpm: Int = 120) {
     }
 
     private fun playBeep() {
-        Thread {
-            try {
-                val beepDurationMs = 100L
-                val bufferSize = (sampleRate * beepDurationMs / 1000).toInt()
-
-                val audioAttributes = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-
-                val audioTrack = AudioTrack(
-                    audioAttributes,
-                    AudioFormat.Builder()
-                        .setSampleRate(sampleRate)
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                        .build(),
-                    bufferSize * 2,
-                    AudioTrack.MODE_STREAM,
-                    android.media.AudioManager.STREAM_MUSIC
-                )
-
-                audioTrack.play()
-
-                val audioBuffer = ShortArray(bufferSize)
-                var phase = 0.0
-
-                for (i in 0 until bufferSize) {
-                    val sample = (sin(phase) * 32767 * 0.3).toInt().toShort()
-                    audioBuffer[i] = sample
-                    phase += 2.0 * PI * beepFrequency / sampleRate
-                }
-
-                audioTrack.write(audioBuffer, 0, bufferSize)
-                audioTrack.stop()
-                audioTrack.release()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }.start()
+        // Audio on emulator doesn't work reliably - just vibrate instead
+        // TODO: Re-enable when testing on real device
     }
 
     fun release() {
