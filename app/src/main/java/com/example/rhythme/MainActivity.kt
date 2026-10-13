@@ -11,12 +11,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lightbulb
@@ -197,7 +197,7 @@ fun RhythmPlayScreen(
         }
 
         // Spacer to push circle to center
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.fillMaxHeight(0.25f))
 
         // Center: big hold pad with beat pulse
         val beatSize = 240.dp * (1f + beatPulse * 0.1f)
@@ -251,7 +251,7 @@ fun RhythmPlayScreen(
         }
 
         // Spacer to push info to bottom
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.fillMaxHeight(0.25f))
 
         // Bottom: info
         Text(
