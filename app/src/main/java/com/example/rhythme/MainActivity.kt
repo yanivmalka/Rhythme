@@ -213,10 +213,10 @@ fun RhythmPlayScreen(
             Color(red = 0.2f, green = 0.5f, blue = 0.9f)
         }
 
+        // Fixed outer container to prevent layout jumping
         Box(
             modifier = Modifier
-                .size(beatSize)
-                .background(color = lightColor, shape = CircleShape)
+                .size(280.dp)
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onPress = { offset ->
@@ -235,18 +235,26 @@ fun RhythmPlayScreen(
                 },
             contentAlignment = Alignment.Center
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = if (isHolding) "Hold..." else "Press & Hold",
-                    color = Color.White,
-                    fontSize = 20.sp
-                )
-                Text(
-                    text = String.format("%.1f", holdDurationMs / 1000.0) + "s",
-                    color = Color.White,
-                    fontSize = 28.sp,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+            // Inner animated circle
+            Box(
+                modifier = Modifier
+                    .size(beatSize)
+                    .background(color = lightColor, shape = CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = if (isHolding) "Hold..." else "Press & Hold",
+                        color = Color.White,
+                        fontSize = 20.sp
+                    )
+                    Text(
+                        text = String.format("%.1f", holdDurationMs / 1000.0) + "s",
+                        color = Color.White,
+                        fontSize = 28.sp,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
             }
         }
 
