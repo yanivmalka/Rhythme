@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -30,10 +31,15 @@ import kotlin.math.min
 
 class MainActivity : ComponentActivity() {
     private lateinit var hapticManager: HapticManager
+    private lateinit var audioManager: AudioManager
+    private lateinit var metronomeManager: MetronomeManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         hapticManager = HapticManager(this)
+        audioManager = AudioManager()
+        metronomeManager = MetronomeManager(120)
+
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
@@ -41,7 +47,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    RhythmPlayScreen(hapticManager)
+                    RhythmPlayScreen(hapticManager, audioManager, metronomeManager)
                 }
             }
         }
@@ -50,24 +56,55 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         hapticManager.stop()
+        audioManager.stopTone()
+        metronomeManager.release()
+        audioManager.release()
     }
 }
 
 @Composable
-fun RhythmPlayScreen(hapticManager: HapticManager) {
+fun RhythmPlayScreen(
+    hapticManager: HapticManager,
+    audioManager: AudioManager,
+    metronomeManager: MetronomeManager
+) {
     var isHolding by remember { mutableStateOf(false) }
     var holdDurationMs by remember { mutableStateOf(0L) }
     var soundEnabled by remember { mutableStateOf(true) }
     var vibrationEnabled by remember { mutableStateOf(true) }
     var lightEnabled by remember { mutableStateOf(true) }
+    var beatEnabled by remember { mutableStateOf(true) }
     var startTime by remember { mutableStateOf(0L) }
+    var bpm by remember { mutableStateOf(120f) }
+    var beatPulse by remember { mutableStateOf(0f) }
 
+    // Beat pulse animation
+    LaunchedEffect(beatEnabled, bpm) {
+        if (beatEnabled) {
+            metronomeManager.setBpm(bpm.toInt())
+            metronomeManager.start {
+                beatPulse = 1f
+            }
+        } else {
+            metronomeManager.stop()
+        }
+    }
+
+    // Beat pulse decay
+    LaunchedEffect(beatPulse) {
+        if (beatPulse > 0f) {
+            kotlinx.coroutines.delay(100)
+            beatPulse *= 0.8f
+        }
+    }
+
+    // Hold feedback loop
     LaunchedEffect(isHolding) {
         while (isHolding) {
             holdDurationMs = System.currentTimeMillis() - startTime
+            val volume = min(1f, holdDurationMs / 4000f)
 
             if (vibrationEnabled) {
-                // Amplitude scales with hold duration (0-255)
                 val amplitude = min(255, (holdDurationMs / 10).toInt())
                 hapticManager.vibrate(50, amplitude)
             }
@@ -87,48 +124,64 @@ fun RhythmPlayScreen(hapticManager: HapticManager) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp),
+                .padding(bottom = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             IconButton(
                 onClick = { soundEnabled = !soundEnabled },
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier.size(40.dp)
             ) {
                 Icon(
                     imageVector = if (soundEnabled) Icons.Filled.VolumeMute else Icons.Filled.VolumeOff,
                     contentDescription = "Sound toggle",
                     tint = if (soundEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
 
             IconButton(
                 onClick = { vibrationEnabled = !vibrationEnabled },
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier.size(40.dp)
             ) {
-                Text(
-                    "⚡",
-                    fontSize = 24.sp,
-                    modifier = Modifier.align(Alignment.CenterVertically)
-                )
+                Text("⚡", fontSize = 20.sp)
             }
 
             IconButton(
                 onClick = { lightEnabled = !lightEnabled },
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier.size(40.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.Lightbulb,
                     contentDescription = "Light toggle",
                     tint = if (lightEnabled) Color.Yellow else MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            IconButton(
+                onClick = { beatEnabled = !beatEnabled },
+                modifier = Modifier.size(40.dp)
+            ) {
+                Text("♪", fontSize = 20.sp, color = if (beatEnabled) Color.Green else MaterialTheme.colorScheme.surfaceVariant)
+            }
+        }
+
+        // BPM Slider
+        if (beatEnabled) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                Text("BPM: ${bpm.toInt()}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Slider(
+                    value = bpm,
+                    onValueChange = { bpm = it },
+                    valueRange = 40f..180f,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }
 
-        // Center: big hold pad
+        // Center: big hold pad with beat pulse
+        val beatSize = 240.dp * (1f + beatPulse * 0.1f)
         val lightColor = if (lightEnabled && isHolding) {
-            // Shift from cool (blue) to warm (orange) based on hold time
             val progress = min(1f, holdDurationMs / 4000f)
             Color(
                 red = (0.2f + progress * 0.8f),
@@ -142,20 +195,21 @@ fun RhythmPlayScreen(hapticManager: HapticManager) {
 
         Box(
             modifier = Modifier
-                .size(240.dp)
+                .size(beatSize)
                 .align(Alignment.CenterHorizontally)
-                .background(
-                    color = lightColor,
-                    shape = CircleShape
-                )
+                .background(color = lightColor, shape = CircleShape)
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onPress = { offset ->
                             isHolding = true
                             startTime = System.currentTimeMillis()
+                            if (soundEnabled) {
+                                audioManager.startTone(0.3f)
+                            }
                             tryAwaitRelease()
                             isHolding = false
                             hapticManager.stop()
+                            audioManager.stopTone()
                             holdDurationMs = 0
                         }
                     )
@@ -179,7 +233,7 @@ fun RhythmPlayScreen(hapticManager: HapticManager) {
 
         // Bottom: info
         Text(
-            text = "Hold the circle. Feel the vibration grow.",
+            text = "Hold to play. Listen to the beat.",
             modifier = Modifier
                 .align(Alignment.CenterHorizontally)
                 .padding(bottom = 16.dp),
