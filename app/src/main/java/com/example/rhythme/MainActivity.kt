@@ -33,6 +33,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
@@ -197,10 +198,10 @@ fun RhythmPlayScreen(
         }
 
         // Spacer to push circle to center
-        Spacer(modifier = Modifier.fillMaxHeight(0.25f))
+        Spacer(modifier = Modifier.weight(1f))
 
         // Center: big hold pad with beat pulse
-        val beatSize = 240.dp * (1f + beatPulse * 0.1f)
+        val pulseScale = 1f + beatPulse * 0.1f
         val lightColor = if (lightEnabled && isHolding) {
             val progress = min(1f, holdDurationMs / 4000f)
             Color(
@@ -238,7 +239,11 @@ fun RhythmPlayScreen(
             // Inner animated circle
             Box(
                 modifier = Modifier
-                    .size(beatSize)
+                    .size(240.dp)
+                    .graphicsLayer {
+                        scaleX = pulseScale
+                        scaleY = pulseScale
+                    }
                     .background(color = lightColor, shape = CircleShape),
                 contentAlignment = Alignment.Center
             ) {
@@ -259,7 +264,7 @@ fun RhythmPlayScreen(
         }
 
         // Spacer to push info to bottom
-        Spacer(modifier = Modifier.fillMaxHeight(0.25f))
+        Spacer(modifier = Modifier.weight(1f))
 
         // Bottom: info
         Text(
