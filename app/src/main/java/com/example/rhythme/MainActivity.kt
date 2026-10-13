@@ -1,4 +1,4 @@
-package com.example.myapplication
+package com.example.rhythme
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -25,7 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.myapplication.ui.theme.MyApplicationTheme
+import com.example.rhythme.ui.theme.MyApplicationTheme
 import kotlin.math.min
 
 class MainActivity : ComponentActivity() {
