@@ -8,7 +8,7 @@ import android.media.AudioTrack
 import java.util.Timer
 import java.util.TimerTask
 
-class MetronomeManager(var bpm: Int = 120) {
+class MetronomeManager(private var _bpm: Int = 120) {
     private var timer: Timer? = null
     private var isRunning = false
     private val sampleRate = 44100
@@ -16,7 +16,7 @@ class MetronomeManager(var bpm: Int = 120) {
     private var onBeatCallback: (() -> Unit)? = null
 
     fun setBpm(newBpm: Int) {
-        bpm = newBpm.coerceIn(40, 180)
+        _bpm = newBpm.coerceIn(40, 180)
     }
 
     fun start(onBeat: (() -> Unit)? = null) {
@@ -24,7 +24,7 @@ class MetronomeManager(var bpm: Int = 120) {
         isRunning = true
         onBeatCallback = onBeat
 
-        val beatIntervalMs = (60000 / bpm).toLong()
+        val beatIntervalMs = (60000 / _bpm).toLong()
 
         timer = Timer()
         timer?.scheduleAtFixedRate(object : TimerTask() {
