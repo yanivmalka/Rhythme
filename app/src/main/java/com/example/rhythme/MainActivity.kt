@@ -97,6 +97,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        audioManager.start()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        audioManager.stopTone()
+        audioManager.stop()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         hapticManager.stop()
@@ -148,6 +159,7 @@ fun RhythmPlayScreen(
             val intervalMs = 60000L / bpm.toInt()
             while (true) {
                 beatTick++
+                if (soundEnabled) audioManager.playClick()
                 kotlinx.coroutines.delay(intervalMs)
             }
         }
@@ -166,6 +178,7 @@ fun RhythmPlayScreen(
         while (isHolding) {
             holdDurationMs = System.currentTimeMillis() - startTime
             val volume = min(1f, holdDurationMs / 4000f)
+            audioManager.updateVolume(0.3f + 0.2f * volume) // tone swells as you hold (tone + click stays < 1.0)
 
             if (vibrationEnabled) {
                 val amplitude = min(255, (holdDurationMs / 10).toInt())
