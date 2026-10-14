@@ -510,18 +510,26 @@ fun RhythmPlayScreen(
                                 var moved = 0f
                                 var sliding = false
                                 var stepAcc = 0f
-                                val stepPx = 10.dp.toPx() // 1 BPM per 10 dp
-                                // Near the pad's border the tempo keeps moving on its own (faster the longer it stays)
+                                val stepPx = 40.dp.toPx() // one tempo mark per 40 dp, like the << >> buttons
+                                // Jump to the next/previous tempo mark and apply it at once (beat + vibration follow live)
+                                fun jumpMark(dir: Int) {
+                                    val next = if (dir > 0) Tempo.nextMark(pendingBpm) else Tempo.previousMark(pendingBpm)
+                                    if (next != pendingBpm) {
+                                        pendingBpm = next
+                                        playBpm = next
+                                    }
+                                }
+                                // Near the pad's border it keeps jumping on its own (faster the longer it stays)
                                 val edgeRadius = 100.dp.toPx()
                                 var edgeDir = 0
                                 var edgeRepeats = 0
                                 try {
                                     while (true) {
                                         val event = if (sliding && edgeDir != 0) {
-                                            withTimeoutOrNull((140L - edgeRepeats * 8).coerceAtLeast(40)) { awaitPointerEvent() }
+                                            withTimeoutOrNull((500L - edgeRepeats * 60).coerceAtLeast(250)) { awaitPointerEvent() }
                                         } else awaitPointerEvent()
                                         if (event == null) { // finger resting at the border: auto-repeat
-                                            pendingBpm = Tempo.clamp(pendingBpm + edgeDir)
+                                            jumpMark(edgeDir)
                                             edgeRepeats++
                                             continue
                                         }
@@ -540,7 +548,7 @@ fun RhythmPlayScreen(
                                             val steps = (stepAcc / stepPx).toInt()
                                             if (steps != 0) {
                                                 stepAcc -= steps * stepPx
-                                                pendingBpm = Tempo.clamp(pendingBpm + steps)
+                                                repeat(kotlin.math.abs(steps)) { jumpMark(if (steps > 0) 1 else -1) }
                                             }
                                             // Direction of the border zone the finger is in: up / slider-forward = faster
                                             val fromCenter = last - Offset(size.width / 2f, size.height / 2f)
