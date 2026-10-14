@@ -35,6 +35,8 @@
     <string name="lesson_dotted_quarter_desc">Hold for one and a half beats.</string>
     <string name="lesson_eighth_title">Eighth Notes</string>
     <string name="lesson_eighth_desc">Hold for half a beat.</string>
+    <string name="lesson_sixteenth_title">Sixteenth Notes</string>
+    <string name="lesson_sixteenth_desc">Hold for a quarter of a beat. Quick!</string>
 
     <!-- Transport, tempo and practice -->
     <string name="cd_play">Start beat</string>
@@ -60,6 +62,7 @@
     </string-array>
 
     <!-- Note values -->
+    <string name="note_sixteenth">Sixteenth note</string>
     <string name="note_eighth">Eighth note</string>
     <string name="note_quarter">Quarter note</string>
     <string name="note_dotted_quarter">Dotted quarter note</string>

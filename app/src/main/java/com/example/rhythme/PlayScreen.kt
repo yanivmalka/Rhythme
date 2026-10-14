@@ -9,7 +9,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -414,9 +416,11 @@ fun RhythmPlayScreen(
             modifier = Modifier
                 .size(300.dp)
                 .pointerInput(Unit) {
-                    detectTapGestures(
-                        onPress = {
-                            val pressedAt = SystemClock.uptimeMillis()
+                    // Times come from the touch events themselves (ms-exact), not from when this code
+                    // runs, which can lag a frame: that matters for short notes like sixteenths.
+                    awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val pressedAt = down.uptimeMillis
                             isHolding = true
                             startTime = pressedAt
                             holdDurationMs = 0
@@ -441,16 +445,16 @@ fun RhythmPlayScreen(
                                 hapticManager.startHold(pressedAt, currentTargetMs, beats)
                             }
 
-                            tryAwaitRelease()
-
-                            val heldMs = SystemClock.uptimeMillis() - startTime
+                            val up = waitForUpOrCancellation()
+                            up?.consume()
+                            val heldMs = (up?.uptimeMillis ?: SystemClock.uptimeMillis()) - startTime
                             isHolding = false
                             audioManager.stopTone()
                             val (stopIn, holdId) = hapticManager.endHold(SystemClock.uptimeMillis())
                             if (stopIn > 0) scope.launch { delay(stopIn); hapticManager.stopHold(holdId) } // let the pulse finish
                             lastInteractionAt = SystemClock.uptimeMillis()
                             lastProgress = heldMs.toFloat() / currentTargetMs
-                            if (heldMs < MIN_HOLD_MS) return@detectTapGestures
+                            if (heldMs < MIN_HOLD_MS) return@awaitEachGesture
 
                             // The player gets it: let the hint go after a couple of holds
                             holdsSinceHint++
@@ -470,8 +474,7 @@ fun RhythmPlayScreen(
                                 onComplete(l, accuracy)
                                 lessonProgress = progressManager.getProgress(l.id)
                             }
-                        }
-                    )
+                    }
                 },
             contentAlignment = Alignment.Center
         ) {
@@ -672,8 +675,8 @@ private fun NoteValuePicker(selected: NoteLength, onSelect: (NoteLength) -> Unit
             val name = stringResource(note.nameRes)
             Box(
                 modifier = Modifier
-                    .padding(horizontal = 3.dp)
-                    .size(46.dp)
+                    .padding(horizontal = 2.dp)
+                    .size(42.dp)
                     .background(
                         if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.25f) else Color.Transparent,
                         CircleShape
@@ -687,7 +690,7 @@ private fun NoteValuePicker(selected: NoteLength, onSelect: (NoteLength) -> Unit
                     .semantics { contentDescription = name },
                 contentAlignment = Alignment.Center
             ) {
-                NoteGlyph(note, if (isSelected) Color.White else Color.White.copy(alpha = 0.7f), height = 30.dp)
+                NoteGlyph(note, if (isSelected) Color.White else Color.White.copy(alpha = 0.7f), height = 28.dp)
             }
         }
     }

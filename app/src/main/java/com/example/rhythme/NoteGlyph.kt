@@ -45,10 +45,16 @@ fun NoteGlyph(note: NoteLength, color: Color, modifier: Modifier = Modifier, hei
             val stemX = cx + rx * 0.88f
             val stemTop = h * 0.06f
             drawLine(color, Offset(stemX, cy - ry * 0.2f), Offset(stemX, stemTop), strokeWidth = w * 0.08f)
-            if (note == NoteLength.EIGHTH) {
+            val flags = when (note) {
+                NoteLength.EIGHTH -> 1
+                NoteLength.SIXTEENTH -> 2
+                else -> 0
+            }
+            for (f in 0 until flags) {
+                val top = stemTop + f * h * 0.17f
                 val flag = Path().apply {
-                    moveTo(stemX, stemTop)
-                    cubicTo(stemX + w * 0.05f, stemTop + h * 0.18f, stemX + w * 0.42f, stemTop + h * 0.22f, stemX + w * 0.26f, stemTop + h * 0.50f)
+                    moveTo(stemX, top)
+                    cubicTo(stemX + w * 0.05f, top + h * 0.18f, stemX + w * 0.42f, top + h * 0.22f, stemX + w * 0.26f, top + h * 0.46f)
                 }
                 drawPath(flag, color, style = Stroke(width = w * 0.09f, cap = StrokeCap.Round))
             }

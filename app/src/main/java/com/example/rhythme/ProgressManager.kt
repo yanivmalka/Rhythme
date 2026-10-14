@@ -56,8 +56,14 @@ class ProgressManager(context: Context) {
     // The 80% mastery bar therefore means landing within ~13% of the target.
     fun calculateAccuracy(targetDurationMs: Long, actualDurationMs: Long): Float {
         if (targetDurationMs <= 0) return 0f
-        val error = abs(targetDurationMs - actualDurationMs).toFloat() / targetDurationMs
+        // Forgive touchscreen timing noise first, so very short notes (sixteenths) stay fair
+        val diff = (abs(targetDurationMs - actualDurationMs) - TOUCH_NOISE_MS).coerceAtLeast(0)
+        val error = diff.toFloat() / targetDurationMs
         return (1f - (error - 0.05f) / 0.4f).coerceIn(0f, 1f)
+    }
+
+    private companion object {
+        const val TOUCH_NOISE_MS = 12L
     }
 
     private fun saveProgress(progress: LessonProgress) {

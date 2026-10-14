@@ -33,6 +33,8 @@
     <string name="lesson_dotted_quarter_desc">החזיקו פעמה וחצי.</string>
     <string name="lesson_eighth_title">שמיניות</string>
     <string name="lesson_eighth_desc">החזיקו חצי פעמה.</string>
+    <string name="lesson_sixteenth_title">שש־עשריות</string>
+    <string name="lesson_sixteenth_desc">החזיקו רבע פעמה. מהר!</string>
 
     <!-- Transport, tempo and practice -->
     <string name="cd_play">התחלת פעמה</string>
@@ -58,6 +60,7 @@
     </string-array>
 
     <!-- Note values -->
+    <string name="note_sixteenth">שש־עשרית</string>
     <string name="note_eighth">שמינית</string>
     <string name="note_quarter">רבע</string>
     <string name="note_dotted_quarter">רבע עם נקודה</string>

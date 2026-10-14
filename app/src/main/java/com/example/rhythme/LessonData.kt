@@ -13,6 +13,7 @@ data class Lesson(
 
 /** Note values measured in beats (a quarter note = one beat), so targets follow the tempo. */
 enum class NoteLength(val beats: Float, @StringRes val nameRes: Int) {
+    SIXTEENTH(0.25f, R.string.note_sixteenth),
     EIGHTH(0.5f, R.string.note_eighth),
     QUARTER(1f, R.string.note_quarter),
     DOTTED_QUARTER(1.5f, R.string.note_dotted_quarter),
@@ -81,6 +82,14 @@ object LessonCurriculum {
             targetBpm = 60,
             targetNoteLength = NoteLength.EIGHTH,
             order = 6
+        ),
+        Lesson(
+            id = 7,
+            titleRes = R.string.lesson_sixteenth_title,
+            descriptionRes = R.string.lesson_sixteenth_desc,
+            targetBpm = 60,
+            targetNoteLength = NoteLength.SIXTEENTH,
+            order = 7
         )
     )
 
