@@ -30,6 +30,7 @@ fun LessonScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .safeDrawingPadding() // keep clear of status and navigation bars
             .padding(16.dp)
     ) {
         // Header

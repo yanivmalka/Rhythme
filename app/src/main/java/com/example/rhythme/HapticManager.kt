@@ -17,10 +17,13 @@ class HapticManager(context: Context) {
 
     fun vibrate(durationMs: Long, amplitude: Int = VibrationEffect.DEFAULT_AMPLITUDE) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val effect = VibrationEffect.createOneShot(
-                durationMs,
-                amplitude.coerceIn(0, 255)
-            )
+            // createOneShot throws on 0: valid values are DEFAULT_AMPLITUDE or 1..255
+            val safeAmplitude = when {
+                amplitude == VibrationEffect.DEFAULT_AMPLITUDE -> amplitude
+                !vibrator.hasAmplitudeControl() -> VibrationEffect.DEFAULT_AMPLITUDE
+                else -> amplitude.coerceIn(1, 255)
+            }
+            val effect = VibrationEffect.createOneShot(durationMs, safeAmplitude)
             vibrator.cancel()
             vibrator.vibrate(effect)
         }
