@@ -6,6 +6,7 @@ import android.media.AudioTrack
 import android.os.Build
 import android.os.Process
 import android.util.Log
+import androidx.annotation.StringRes
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.PI
@@ -16,11 +17,24 @@ import kotlin.math.sin
  * One long-lived streaming AudioTrack that mixes the hold tone and beat clicks.
  * (Creating a new AudioTrack per beep was too heavy and failed on the emulator.)
  */
+/** Timbres for the held note, built from harmonics (amplitudes of the 1st, 2nd, 3rd... harmonic). */
+enum class Instrument(@StringRes val nameRes: Int, harmonics: FloatArray, val pianoEnvelope: Boolean = false) {
+    PURE(R.string.instrument_pure, floatArrayOf(1f)),
+    ORGAN(R.string.instrument_organ, floatArrayOf(1f, 0.5f, 0.33f, 0.25f)),
+    CLARINET(R.string.instrument_clarinet, floatArrayOf(1f, 0f, 0.45f, 0f, 0.25f, 0f, 0.12f)),
+    RETRO(R.string.instrument_retro, floatArrayOf(1f, 0f, 1 / 3f, 0f, 1 / 5f, 0f, 1 / 7f, 0f, 1 / 9f)),
+    PIANO(R.string.instrument_piano, floatArrayOf(1f, 0.6f, 0.3f, 0.15f), pianoEnvelope = true);
+
+    /** Normalized so every instrument peaks at the same level. */
+    val weights: FloatArray = harmonics.sum().let { total -> FloatArray(harmonics.size) { harmonics[it] / total } }
+}
+
 class AudioManager {
     private val sampleRate = 44100
     @Volatile var frequency = 440.0 // pitch of the hold tone (A4 by default)
     private val chunkSize = sampleRate / 100 // 10ms per write keeps latency low
 
+    @Volatile var instrument = Instrument.PURE
     @Volatile private var toneOn = false
     @Volatile private var toneVolume = 0.3f
     private val clickRequested = AtomicBoolean(false)
@@ -106,6 +120,8 @@ class AudioManager {
         val rampStep = 1f / (sampleRate * 0.005f) // 5ms fade avoids clicks on start/stop
         var phase = 0.0
         var gain = 0f
+        var wasOn = false
+        var toneSamples = 0 // since the current note started (piano envelope)
         var clickPos = click.size
         var chime: FloatArray? = null
         var chimePos = 0
@@ -115,10 +131,22 @@ class AudioManager {
             chimeRequested.getAndSet(null)?.let { chime = it; chimePos = 0 }
             val phaseStep = 2.0 * PI * frequency / sampleRate
             val clickGain = clickVolume
-            val target = if (toneOn) toneVolume else 0f
+            val on = toneOn
+            if (on && !wasOn) toneSamples = 0
+            wasOn = on
+            val target = if (on) toneVolume else 0f
+            val voice = instrument
+            val weights = voice.weights
             for (i in 0 until chunkSize) {
                 gain += (target - gain).coerceIn(-rampStep, rampStep)
-                var s = (sin(phase) * gain).toFloat()
+                var wave = 0.0
+                for (k in weights.indices) if (weights[k] != 0f) wave += weights[k] * sin((k + 1) * phase)
+                if (voice.pianoEnvelope) { // strike, then settle to a gentle sustain
+                    val t = toneSamples.toDouble() / sampleRate
+                    wave *= 0.35 + 0.65 * exp(-t * 4)
+                }
+                toneSamples++
+                var s = (wave * gain).toFloat()
                 phase += phaseStep
                 if (phase > 2.0 * PI) phase -= 2.0 * PI
                 if (clickPos < click.size) s += click[clickPos++] * clickGain

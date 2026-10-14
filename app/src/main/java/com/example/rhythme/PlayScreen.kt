@@ -1,5 +1,6 @@
 package com.example.rhythme
 
+import android.content.SharedPreferences
 import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.School
@@ -105,13 +107,28 @@ private val RingBlue = Color(0xFF7FD4FF)
 private val ReleaseGreen = Color(0xFF34C759)
 private val OverRed = Color(0xFFFF6B6B)
 
-/** Player choices that should survive moving between free play and lessons. */
-class PlaySettings {
-    var soundEnabled by mutableStateOf(true)
-    var vibrationEnabled by mutableStateOf(true)
-    var lightEnabled by mutableStateOf(true)
-    var pitchIndex by mutableIntStateOf(DEFAULT_PITCH)
-    var freeNote by mutableStateOf(NoteLength.QUARTER)
+/** Player choices: shared by all screens and saved across app launches. */
+class PlaySettings(private val prefs: SharedPreferences) {
+    private val sound = mutableStateOf(prefs.getBoolean("sound", true))
+    private val vibration = mutableStateOf(prefs.getBoolean("vibration", true))
+    private val light = mutableStateOf(prefs.getBoolean("light", true))
+    private val pitch = mutableIntStateOf(prefs.getInt("pitch", DEFAULT_PITCH).coerceIn(PITCHES_HZ.indices))
+    private val note = mutableStateOf(enumOr(prefs.getString("note", null), NoteLength.QUARTER))
+    private val voice = mutableStateOf(enumOr(prefs.getString("instrument", null), Instrument.PURE))
+    private val name = mutableStateOf(prefs.getString("profile_name", "") ?: "")
+
+    var soundEnabled: Boolean get() = sound.value; set(v) { sound.value = v; prefs.edit().putBoolean("sound", v).apply() }
+    var vibrationEnabled: Boolean get() = vibration.value; set(v) { vibration.value = v; prefs.edit().putBoolean("vibration", v).apply() }
+    var lightEnabled: Boolean get() = light.value; set(v) { light.value = v; prefs.edit().putBoolean("light", v).apply() }
+    var pitchIndex: Int get() = pitch.intValue; set(v) { pitch.intValue = v; prefs.edit().putInt("pitch", v).apply() }
+    var freeNote: NoteLength get() = note.value; set(v) { note.value = v; prefs.edit().putString("note", v.name).apply() }
+    var instrument: Instrument get() = voice.value; set(v) { voice.value = v; prefs.edit().putString("instrument", v.name).apply() }
+    var profileName: String get() = name.value; set(v) { name.value = v; prefs.edit().putString("profile_name", v).apply() }
+
+    private companion object {
+        inline fun <reified T : Enum<T>> enumOr(saved: String?, default: T): T =
+            enumValues<T>().firstOrNull { it.name == saved } ?: default
+    }
 }
 
 @Composable
@@ -122,6 +139,7 @@ fun RhythmPlayScreen(
     progressManager: ProgressManager,
     currentLesson: Lesson?,
     onOpenLessons: () -> Unit,
+    onOpenMenu: () -> Unit,
     onLessonChange: (Lesson) -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -194,6 +212,7 @@ fun RhythmPlayScreen(
     }
 
     LaunchedEffect(pitchIndex) { audioManager.frequency = PITCHES_HZ[pitchIndex] }
+    LaunchedEffect(settings.instrument) { audioManager.instrument = settings.instrument }
 
     // Tempo applies once the slider / buttons rest; until then the old tempo keeps playing
     LaunchedEffect(pendingBpm) {
@@ -285,7 +304,11 @@ fun RhythmPlayScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { soundEnabled = !soundEnabled }, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onOpenMenu, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Filled.Menu, contentDescription = stringResource(R.string.cd_menu), modifier = Modifier.size(24.dp))
+            }
+
+            IconButton(onClick = { soundEnabled = !soundEnabled }, modifier = Modifier.size(40.dp)) {
                     Icon(
                         imageVector = if (soundEnabled) Icons.Filled.VolumeMute else Icons.Filled.VolumeOff,
                         contentDescription = stringResource(R.string.cd_sound_toggle),

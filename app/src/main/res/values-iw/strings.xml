@@ -81,4 +81,27 @@
     <string name="reset_all">איפוס כל ההתקדמות</string>
     <string name="reset_all_confirm_title">לאפס את כל השיעורים?</string>
     <string name="reset_all_confirm_text">פעולה זו מוחקת את הכוכבים וההתקדמות של כל השיעורים.</string>
+
+    <!-- App menu -->
+    <string name="cd_menu">תפריט</string>
+    <string name="menu_profile">פרופיל</string>
+    <string name="menu_language">שפה</string>
+    <string name="menu_instrument">כלי נגינה</string>
+    <string name="menu_about">אודות</string>
+    <string name="profile_guest">אורח</string>
+    <string name="profile_name_label">השם שלך</string>
+    <string name="profile_stats_stars">כוכבים: %1$d מתוך %2$d</string>
+    <string name="profile_stats_lessons">שיעורים שהתחלת: %1$d מתוך %2$d</string>
+    <string name="profile_stats_holds">החזקות שתרגלת: %1$d</string>
+    <string name="profile_cloud_note">התחברות וסנכרון לענן יגיעו בהמשך. בינתיים ההתקדמות שלך נשמרת בטלפון הזה.</string>
+    <string name="lang_system">שפת הטלפון (ברירת מחדל)</string>
+    <string name="lang_unsupported">בחירת שפה כאן דורשת Android 13 ומעלה. האפליקציה פועלת בשפת הטלפון.</string>
+    <string name="instrument_hint">הצליל של התו המוחזק. הקישו על כלי כדי לשמוע אותו.</string>
+    <string name="instrument_pure">צליל טהור</string>
+    <string name="instrument_organ">עוגב</string>
+    <string name="instrument_clarinet">קלרינט</string>
+    <string name="instrument_retro">רטרו</string>
+    <string name="instrument_piano">פסנתר</string>
+    <string name="about_version">גרסה %1$s</string>
+    <string name="about_text">Rhythme מלמדת קצב דרך התחושה. החזיקו את המשטח למשך אורך התו, הקשיבו לפעמה, ותנו לה לדעוך עד שתשמרו על הקצב בעצמכם.</string>
 </resources>

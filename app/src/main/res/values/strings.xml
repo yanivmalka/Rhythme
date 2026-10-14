@@ -83,4 +83,29 @@
     <string name="reset_all">Reset all progress</string>
     <string name="reset_all_confirm_title">Reset all lessons?</string>
     <string name="reset_all_confirm_text">This clears the stars and progress of every lesson.</string>
+
+    <!-- App menu -->
+    <string name="cd_menu">Menu</string>
+    <string name="menu_profile">Profile</string>
+    <string name="menu_language">Language</string>
+    <string name="menu_instrument">Instrument</string>
+    <string name="menu_about">About</string>
+    <string name="profile_guest">Guest</string>
+    <string name="profile_name_label">Your name</string>
+    <string name="profile_stats_stars">Stars: %1$d of %2$d</string>
+    <string name="profile_stats_lessons">Lessons started: %1$d of %2$d</string>
+    <string name="profile_stats_holds">Holds practiced: %1$d</string>
+    <string name="profile_cloud_note">Sign-in and cloud sync are coming later. For now your progress is saved on this phone.</string>
+    <string name="lang_system">Phone language (default)</string>
+    <string name="lang_english" translatable="false">English</string>
+    <string name="lang_hebrew" translatable="false">עברית</string>
+    <string name="lang_unsupported">Choosing a language here needs Android 13 or newer. The app follows the phone language.</string>
+    <string name="instrument_hint">The sound of the held note. Tap one to hear it.</string>
+    <string name="instrument_pure">Pure tone</string>
+    <string name="instrument_organ">Organ</string>
+    <string name="instrument_clarinet">Clarinet</string>
+    <string name="instrument_retro">Retro</string>
+    <string name="instrument_piano">Piano</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_text">Rhythme teaches rhythm by feel. Hold the pad for the length of the note, listen to the beat, and let the beat fade until you keep the rhythm yourself.</string>
 </resources>
