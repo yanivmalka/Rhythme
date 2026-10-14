@@ -11,7 +11,7 @@
     <string name="hint_free_play">החזיקו כדי לנגן. הקשיבו לפעמה.</string>
     <string name="hint_lesson">החזיקו למשך זמן היעד, ואז שחררו.</string>
     <string name="lesson_target">יעד: להחזיק %1$.2f שנ׳</string>
-    <string name="lesson_result">החזקת %1$.2f שנ׳ · %2$d%%</string>
+    <string name="lesson_result">החזקת %1$.2f שנ׳ · %2$d%% מהיעד</string>
 
     <!-- Lessons screen -->
     <string name="lessons_title">שיעורי קצב</string>
@@ -105,4 +105,9 @@
     <string name="about_version">גרסה %1$s</string>
     <string name="about_text">Rhythme מלמדת קצב דרך התחושה. החזיקו את המשטח למשך אורך התו, הקשיבו לפעמה, ותנו לה לדעוך עד שתשמרו על הקצב בעצמכם.</string>
     <string name="note_pitch_title">תו</string>
+    <string name="hold_for">החזיקו %1$.2f שנ׳</string>
+    <string name="tip_long">ההחזקות שלך נוטות להיות ארוכות. שחררו מעט מוקדם יותר.</string>
+    <string name="tip_short">ההחזקות שלך נוטות להיות קצרות. החזיקו מעט יותר.</string>
+    <string name="history_long">ארוך</string>
+    <string name="history_short">קצר</string>
 </resources>

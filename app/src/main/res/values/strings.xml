@@ -13,7 +13,7 @@
     <string name="hint_free_play">Hold to play. Listen to the beat.</string>
     <string name="hint_lesson">Hold for the target time, then release.</string>
     <string name="lesson_target">Target: hold %1$.2fs</string>
-    <string name="lesson_result">You held %1$.2fs · %2$d%%</string>
+    <string name="lesson_result">You held %1$.2fs · %2$d%% of target</string>
 
     <!-- Lessons screen -->
     <string name="lessons_title">Rhythm Lessons</string>
@@ -109,4 +109,9 @@
     <string name="about_version">Version %1$s</string>
     <string name="about_text">Rhythme teaches rhythm by feel. Hold the pad for the length of the note, listen to the beat, and let the beat fade until you keep the rhythm yourself.</string>
     <string name="note_pitch_title">Note</string>
+    <string name="hold_for">Hold %1$.2fs</string>
+    <string name="tip_long">Your holds tend to run long. Let go a little earlier.</string>
+    <string name="tip_short">Your holds tend to be short. Hold on a little longer.</string>
+    <string name="history_long">long</string>
+    <string name="history_short">short</string>
 </resources>

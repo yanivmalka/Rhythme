@@ -12,7 +12,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +53,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -128,6 +128,11 @@ class PlaySettings(private val prefs: SharedPreferences) {
     }
 }
 
+/** One counted hold: how long it was, against what target, and its score. */
+data class HoldResult(val heldMs: Long, val targetMs: Long, val accuracy: Float) {
+    val ratio: Float get() = heldMs.toFloat() / targetMs // 1.0 = exactly on target
+}
+
 @Composable
 fun RhythmPlayScreen(
     settings: PlaySettings,
@@ -176,7 +181,8 @@ fun RhythmPlayScreen(
 
     // Results and lesson progress
     val lesson by rememberUpdatedState(currentLesson)
-    var lastResult by remember { mutableStateOf<Pair<Long, Float>?>(null) } // held ms, accuracy
+    var lastResult by remember { mutableStateOf<HoldResult?>(null) }
+    val history = remember { mutableStateListOf<HoldResult>() } // this session's holds
     var lessonProgress by remember {
         mutableStateOf(currentLesson?.let { progressManager.getProgress(it.id) })
     }
@@ -185,10 +191,12 @@ fun RhythmPlayScreen(
     // Swiping to another lesson keeps the beat going; only lesson-specific state resets
     LaunchedEffect(currentLesson?.id) {
         lastResult = null
+        history.clear()
         lessonProgress = currentLesson?.let { progressManager.getProgress(it.id) }
     }
 
     val targetMs = targetNote.durationMs(playBpm)
+    val sliderSign by rememberUpdatedState(if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f)
     val currentTargetMs by rememberUpdatedState(targetMs)
 
     fun startPlaying() {
@@ -255,6 +263,26 @@ fun RhythmPlayScreen(
         hintVisible = true
         holdsSinceHint = 0
         clickVolume = 1f
+    }
+
+    // Vibration for a hold, from [from] on. Ticks fall on the real beats when the beat plays;
+    // otherwise on the note's own beats counted from the press (matching the ring's beat marks).
+    fun startHoldHaptics(from: Long) {
+        if (!vibrationEnabled) return
+        val interval = 60000.0 / playBpm
+        val horizon = from + (startTime + currentTargetMs - from).coerceAtLeast(0) + 260 + interval.toLong() * 2
+        val first = if (isPlaying && lastBeatAt > 0) lastBeatAt + interval else startTime + interval
+        val beats = generateSequence(first) { it + interval }
+            .map { it.toLong() }
+            .dropWhile { it < from - 70 }
+            .takeWhile { it < horizon }
+            .toList()
+        hapticManager.startHold(startTime, currentTargetMs, beats, interval, playFrom = from)
+    }
+
+    // Tempo changed during a hold (e.g. by sliding on the pad): the vibration follows the new tempo
+    LaunchedEffect(playBpm) {
+        if (isHolding) startHoldHaptics(SystemClock.uptimeMillis())
     }
 
     // Hold display: per frame so the ring fills smoothly
@@ -400,7 +428,7 @@ fun RhythmPlayScreen(
                         onChange = onLessonChange
                     )
                 } else {
-                    NoteValuePicker(selected = freeNote, onSelect = { freeNote = it; lastResult = null })
+                    NoteValuePicker(selected = freeNote, onSelect = { freeNote = it; lastResult = null; history.clear() })
                 }
             }
 
@@ -440,23 +468,45 @@ fun RhythmPlayScreen(
                                     min(phase, 1f - phase)
                                 } else 1f
                                 if (soundEnabled) audioManager.startTone(0.3f)
-                                if (vibrationEnabled) {
-                                    // Whole-hold vibration: buzz, a gap + tick at each upcoming beat, release pulse
-                                    val interval = if (isPlaying && lastBeatAt > 0) 60000.0 / playBpm else null
-                                    val beats = if (interval != null) {
-                                        val horizon = pressedAt + currentTargetMs + 260 + interval.toLong() * 2
-                                        generateSequence(lastBeatAt + interval) { it + interval }
-                                            .map { it.toLong() }
-                                            .dropWhile { it < pressedAt - 70 }
-                                            .takeWhile { it < horizon }
-                                            .toList()
-                                    } else emptyList()
-                                    hapticManager.startHold(pressedAt, currentTargetMs, beats, interval)
-                                }
+                                startHoldHaptics(pressedAt)
 
-                                val up = waitForUpOrCancellation()
-                                up?.consume()
-                                val heldMs = (up?.uptimeMillis ?: SystemClock.uptimeMillis()) - startTime
+                                // Follow the finger until it lifts. Sliding changes the tempo: up = faster,
+                                // sideways along the slider's direction; leaving the pad doesn't cancel.
+                                var releasedAt: Long? = null
+                                var last = down.position
+                                var moved = 0f
+                                var sliding = false
+                                var stepAcc = 0f
+                                val stepPx = 10.dp.toPx() // 1 BPM per 10 dp
+                                try {
+                                    while (true) {
+                                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!change.pressed) {
+                                            releasedAt = change.uptimeMillis
+                                            change.consume()
+                                            break
+                                        }
+                                        val d = change.position - last
+                                        last = change.position
+                                        moved += d.getDistance()
+                                        if (!sliding && moved > viewConfiguration.touchSlop) sliding = true
+                                        if (sliding) {
+                                            stepAcc += d.x * sliderSign - d.y
+                                            val steps = (stepAcc / stepPx).toInt()
+                                            if (steps != 0) {
+                                                stepAcc -= steps * stepPx
+                                                pendingBpm = Tempo.clamp(pendingBpm + steps)
+                                            }
+                                        }
+                                        change.consume()
+                                    }
+                                } catch (e: kotlinx.coroutines.CancellationException) {
+                                    isHolding = false // screen went away mid-hold: silence everything
+                                    audioManager.stopTone()
+                                    hapticManager.stop()
+                                    throw e
+                                }
+                                val heldMs = (releasedAt ?: SystemClock.uptimeMillis()) - startTime
                                 isHolding = false
                                 audioManager.stopTone()
                                 val (stopIn, holdId) = hapticManager.endHold(SystemClock.uptimeMillis())
@@ -470,7 +520,10 @@ fun RhythmPlayScreen(
                                 if (holdsSinceHint >= HOLDS_TO_HIDE_HINT) hintVisible = false
 
                                 val accuracy = progressManager.calculateAccuracy(currentTargetMs, heldMs)
-                                lastResult = heldMs to accuracy
+                                val result = HoldResult(heldMs, currentTargetMs, accuracy)
+                                lastResult = result
+                                history.add(result)
+                                if (history.size > HISTORY_SIZE) history.removeAt(0)
 
                                 // On the beat and the right length: fade the click so they carry the rhythm
                                 if (isPlaying) {
@@ -560,29 +613,43 @@ fun RhythmPlayScreen(
                             !isHolding && hintVisible -> stringResource(R.string.press_and_hold)
                             else -> null
                         },
-                        seconds = if (isHolding) holdDurationMs / 1000.0 else null
+                        seconds = if (isHolding) holdDurationMs / 1000.0 else null,
+                        targetSeconds = targetMs / 1000.0
                     )
                 }
             }
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Bottom: hint, or the last attempt's result
-            val result = lastResult
-            Text(
-                text = when {
-                    result != null -> stringResource(R.string.lesson_result, result.first / 1000.0, (result.second * 100).toInt())
-                    currentLesson != null -> stringResource(R.string.hint_lesson)
-                    else -> stringResource(R.string.hint_free_play)
-                },
-                fontSize = 14.sp,
-                color = when {
-                    result == null -> MaterialTheme.colorScheme.onSurfaceVariant
-                    result.second >= 0.8f -> Color(0xFF66DD77)
-                    result.second >= 0.5f -> Color(0xFFFFC857)
-                    else -> OverRed
-                }
-            )
+            // Bottom: this session's timing history, the last result and a gentle tip (fixed height)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(92.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Bottom
+            ) {
+                TimingHistory(history, modifier = Modifier.fillMaxWidth().height(44.dp))
+                val result = lastResult
+                Text(
+                    text = when {
+                        result != null -> stringResource(
+                            R.string.lesson_result, result.heldMs / 1000.0, (result.ratio * 100).roundToInt()
+                        )
+                        currentLesson != null -> stringResource(R.string.hint_lesson)
+                        else -> stringResource(R.string.hint_free_play)
+                    },
+                    fontSize = 14.sp,
+                    color = result?.let { scoreColor(it.ratio) } ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                val tip = timingTip(history)
+                Text(
+                    text = tip?.let { stringResource(it) } ?: "",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
         // Star earned: full-screen celebration on top
@@ -592,25 +659,21 @@ fun RhythmPlayScreen(
     }
 }
 
-/** Label inside the pad that fades in and out smoothly instead of popping. */
+/** Label inside the pad: fading hint, and the elapsed time while holding (the target at rest). */
 @Composable
-private fun PadLabel(text: String?, seconds: Double?) {
+private fun PadLabel(text: String?, seconds: Double?, targetSeconds: Double) {
     var shownText by remember { mutableStateOf(text ?: "") }
     if (text != null) shownText = text
     val textAlpha by animateFloatAsState(if (text != null) 1f else 0f, tween(600), label = "labelAlpha")
-    val secondsAlpha by animateFloatAsState(if (seconds != null) 1f else 0f, tween(400), label = "secondsAlpha")
-    var shownSeconds by remember { mutableStateOf(0.0) }
-    if (seconds != null) shownSeconds = seconds
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(shownText, color = Color.White, fontSize = 22.sp, modifier = Modifier.alpha(textAlpha))
         Text(
-            stringResource(R.string.seconds_1dp, shownSeconds),
-            color = Color.White,
-            fontSize = 28.sp,
-            modifier = Modifier
-                .padding(top = 8.dp)
-                .alpha(secondsAlpha)
+            if (seconds != null) stringResource(R.string.seconds_1dp, seconds)
+            else stringResource(R.string.hold_for, targetSeconds),
+            color = Color.White.copy(alpha = if (seconds != null) 1f else 0.75f),
+            fontSize = if (seconds != null) 28.sp else 20.sp,
+            modifier = Modifier.padding(top = 8.dp)
         )
     }
 }
@@ -777,5 +840,69 @@ private fun LessonBanner(lesson: Lesson, progress: LessonProgress, targetMs: Lon
                 maxLines = 1
             )
         }
+    }
+}
+
+private const val HISTORY_SIZE = 15
+
+/** Same color for equally early and late holds: 93% and 107% of the target look the same. */
+private fun scoreColor(ratio: Float): Color {
+    val off = kotlin.math.abs(ratio - 1f)
+    return when {
+        off <= GOOD_WINDOW -> Color(0xFF66DD77)
+        off <= 0.3f -> Color(0xFFFFC857)
+        else -> OverRed
+    }
+}
+
+/** A tip only when the last holds clearly lean one way; otherwise nothing (no nagging). */
+private fun timingTip(history: List<HoldResult>): Int? {
+    val recent = history.takeLast(6)
+    if (recent.size < 5) return null
+    val mean = recent.map { it.ratio - 1f }.average()
+    val late = recent.count { it.ratio > 1f + 0.03f }
+    val early = recent.count { it.ratio < 1f - 0.03f }
+    return when {
+        mean > 0.05 && late >= 4 -> R.string.tip_long
+        mean < -0.05 && early >= 4 -> R.string.tip_short
+        else -> null
+    }
+}
+
+/**
+ * This session's holds as dots around the target line: above = held too long, below = too short.
+ * Soft green band = the good zone; older dots fade. Newest at the reading end (right; left in RTL).
+ */
+@Composable
+private fun TimingHistory(history: List<HoldResult>, modifier: Modifier = Modifier) {
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val longLabel = stringResource(R.string.history_long)
+    val shortLabel = stringResource(R.string.history_short)
+    Box(modifier.padding(horizontal = 24.dp)) {
+        Canvas(Modifier.fillMaxSize()) {
+            val mid = size.height / 2
+            val range = 0.4f // +/-40% fills the strip
+            val band = mid * GOOD_WINDOW / range
+            drawRect(Color(0xFF66DD77).copy(alpha = 0.10f), Offset(0f, mid - band), Size(size.width, band * 2))
+            drawLine(Color.White.copy(alpha = 0.25f), Offset(0f, mid), Offset(size.width, mid), strokeWidth = 1.dp.toPx())
+            if (history.isEmpty()) return@Canvas
+            val slot = size.width / HISTORY_SIZE
+            val n = history.size
+            var prev: Offset? = null
+            history.forEachIndexed { i, r ->
+                val fromEnd = n - 1 - i
+                val xLtr = size.width - slot / 2 - fromEnd * slot
+                val x = if (rtl) size.width - xLtr else xLtr
+                val dev = (r.ratio - 1f).coerceIn(-range, range)
+                val p = Offset(x, mid - dev / range * mid)
+                val age = 0.35f + 0.65f * (i + 1f) / n
+                prev?.let { drawLine(Color.White.copy(alpha = 0.12f * age), it, p, strokeWidth = 1.5.dp.toPx()) }
+                drawCircle(scoreColor(r.ratio).copy(alpha = age), radius = if (fromEnd == 0) 5.dp.toPx() else 3.5.dp.toPx(), center = p)
+                prev = p
+            }
+        }
+        // Tiny axis hints at the start edge
+        Text(longLabel, fontSize = 9.sp, color = Color.White.copy(alpha = 0.35f), modifier = Modifier.align(Alignment.TopStart))
+        Text(shortLabel, fontSize = 9.sp, color = Color.White.copy(alpha = 0.35f), modifier = Modifier.align(Alignment.BottomStart))
     }
 }
