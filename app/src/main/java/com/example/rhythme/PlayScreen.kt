@@ -138,7 +138,6 @@ fun RhythmPlayScreen(
     // Beat
     var beatTick by remember { mutableIntStateOf(0) }
     var lastBeatAt by remember { mutableLongStateOf(0L) }
-    var lastTickAt by remember { mutableLongStateOf(0L) }
     var clickVolume by remember { mutableFloatStateOf(1f) } // fades as the player locks in
     val ripple = remember { Animatable(1f) }
 
@@ -147,7 +146,6 @@ fun RhythmPlayScreen(
     var startTime by remember { mutableLongStateOf(0L) }
     var holdDurationMs by remember { mutableLongStateOf(0L) }
     var lastProgress by remember { mutableFloatStateOf(0f) }
-    var reachedTarget by remember { mutableStateOf(false) }
     var pressOnsetError by remember { mutableFloatStateOf(1f) }
 
     // "Press & Hold" hint
@@ -208,10 +206,7 @@ fun RhythmPlayScreen(
             lastBeatAt = at
             beatTick++
             if (clickVolume > 0f) audioManager.playClick(clickVolume) // the speaker toggle mutes only the held note
-            if (vibrationEnabled) {
-                hapticManager.tick()
-                lastTickAt = SystemClock.uptimeMillis()
-            }
+            if (vibrationEnabled) hapticManager.tick()
             n++
         }
     }
@@ -242,23 +237,11 @@ fun RhythmPlayScreen(
         }
     }
 
-    // Hold feedback: tone swell, gentle buzz, strong pulse at the target
+    // Hold feedback: the tone swells as you hold (vibration is one pattern, see startHold)
     LaunchedEffect(isHolding) {
         while (isHolding) {
-            val now = SystemClock.uptimeMillis()
-            val p = (now - startTime).toFloat() / currentTargetMs
+            val p = (SystemClock.uptimeMillis() - startTime).toFloat() / currentTargetMs
             audioManager.updateVolume(0.3f + 0.2f * min(1f, p)) // tone + click stays < 1.0
-            if (vibrationEnabled) {
-                if (!reachedTarget && p >= 1f) {
-                    reachedTarget = true
-                    hapticManager.pulse()
-                    lastTickAt = now
-                } else if (hapticManager.hasAmplitudeControl && now - lastTickAt > 150) {
-                    // Gentle swelling buzz, with gaps so beat ticks and the pulse are felt.
-                    // Skipped on on/off-only motors, where it would be full strength and drown them.
-                    hapticManager.vibrate(50, (40 + 80 * min(1f, p)).toInt())
-                }
-            }
             delay(50)
         }
     }
@@ -437,7 +420,6 @@ fun RhythmPlayScreen(
                             isHolding = true
                             startTime = pressedAt
                             holdDurationMs = 0
-                            reachedTarget = false
                             lastInteractionAt = pressedAt
                             pressOnsetError = if (isPlaying && lastBeatAt > 0) {
                                 val interval = 60000f / playBpm
@@ -445,12 +427,27 @@ fun RhythmPlayScreen(
                                 min(phase, 1f - phase)
                             } else 1f
                             if (soundEnabled) audioManager.startTone(0.3f)
+                            if (vibrationEnabled) {
+                                // Whole-hold vibration: buzz, a gap + tick at each upcoming beat, release pulse
+                                val beats = if (isPlaying && lastBeatAt > 0) {
+                                    val interval = 60000.0 / playBpm
+                                    val horizon = pressedAt + currentTargetMs * 2 + 1500
+                                    generateSequence(lastBeatAt + interval) { it + interval }
+                                        .map { it.toLong() }
+                                        .dropWhile { it < pressedAt - 70 }
+                                        .takeWhile { it < horizon }
+                                        .toList()
+                                } else emptyList()
+                                hapticManager.startHold(pressedAt, currentTargetMs, beats)
+                            }
 
                             tryAwaitRelease()
 
                             val heldMs = SystemClock.uptimeMillis() - startTime
                             isHolding = false
-                            audioManager.stopTone() // no vibration cancel: it would cut off the release pulse
+                            audioManager.stopTone()
+                            val (stopIn, holdId) = hapticManager.endHold(SystemClock.uptimeMillis())
+                            if (stopIn > 0) scope.launch { delay(stopIn); hapticManager.stopHold(holdId) } // let the pulse finish
                             lastInteractionAt = SystemClock.uptimeMillis()
                             lastProgress = heldMs.toFloat() / currentTargetMs
                             if (heldMs < MIN_HOLD_MS) return@detectTapGestures
