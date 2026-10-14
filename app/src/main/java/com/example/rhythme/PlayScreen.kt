@@ -117,6 +117,7 @@ class PlaySettings(private val prefs: SharedPreferences) {
     private val voice = mutableStateOf(enumOr(prefs.getString("instrument", null), Instrument.PURE))
     private val name = mutableStateOf(prefs.getString("profile_name", "") ?: "")
     private val meter = mutableStateOf(enumOr(prefs.getString("time_signature", null), TimeSignature.FOUR_FOUR))
+    private val click = mutableStateOf(prefs.getBoolean("beat_sound", true))
 
     var soundEnabled: Boolean get() = sound.value; set(v) { sound.value = v; prefs.edit().putBoolean("sound", v).apply() }
     var vibrationEnabled: Boolean get() = vibration.value; set(v) { vibration.value = v; prefs.edit().putBoolean("vibration", v).apply() }
@@ -126,6 +127,7 @@ class PlaySettings(private val prefs: SharedPreferences) {
     var instrument: Instrument get() = voice.value; set(v) { voice.value = v; prefs.edit().putString("instrument", v.name).apply() }
     var profileName: String get() = name.value; set(v) { name.value = v; prefs.edit().putString("profile_name", v).apply() }
     var timeSignature: TimeSignature get() = meter.value; set(v) { meter.value = v; prefs.edit().putString("time_signature", v.name).apply() }
+    var beatSound: Boolean get() = click.value; set(v) { click.value = v; prefs.edit().putBoolean("beat_sound", v).apply() }
 
     private companion object {
         inline fun <reified T : Enum<T>> enumOr(saved: String?, default: T): T =
@@ -180,6 +182,7 @@ fun RhythmPlayScreen(
     var lastProgress by remember { mutableFloatStateOf(0f) }
     var pressOnsetError by remember { mutableFloatStateOf(1f) }
     var pressSolo by remember { mutableStateOf(false) } // no audible beat at press: counts toward ★★★
+    var pressBarPulse by remember { mutableIntStateOf(0) } // pulse of the bar the hold started on (0 = beat 1)
 
     // "Press & Hold" hint
     var hintVisible by remember { mutableStateOf(true) }
@@ -197,6 +200,7 @@ fun RhythmPlayScreen(
 
     // Swiping to another lesson keeps the beat going; only lesson-specific state resets
     LaunchedEffect(currentLesson?.id) {
+        currentLesson?.timeSignature?.let { settings.timeSignature = it }
         lastResult = null
         history.clear()
         lessonProgress = currentLesson?.let { progressManager.getProgress(it.id) }
@@ -252,7 +256,8 @@ fun RhythmPlayScreen(
             beatInBar = (beatInBar + 1) % timeSignature.pulsesPerBar
             val accent = timeSignature.accents[beatInBar]
             beatTick++
-            if (clickVolume > 0f) audioManager.playClick(clickVolume, accent) // the speaker toggle mutes only the held note
+            // The metronome button mutes the click; the speaker button mutes only the held note
+            if (clickVolume > 0f && settings.beatSound) audioManager.playClick(clickVolume, accent)
             if (vibrationEnabled) hapticManager.tick(accent)
             n++
         }
@@ -372,6 +377,15 @@ fun RhythmPlayScreen(
                     )
                 }
 
+                IconButton(onClick = { settings.beatSound = !settings.beatSound }, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        imageVector = MetronomeIcon,
+                        contentDescription = stringResource(R.string.cd_beat_sound),
+                        tint = if (settings.beatSound) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
                 IconButton(onClick = onOpenLessons, modifier = Modifier.size(40.dp)) {
                     Icon(
                         imageVector = Icons.Filled.School,
@@ -475,7 +489,12 @@ fun RhythmPlayScreen(
                                 startTime = pressedAt
                                 holdDurationMs = 0
                                 lastInteractionAt = pressedAt
-                                pressSolo = !isPlaying || clickVolume == 0f // beat stopped, or faded out
+                                pressSolo = !isPlaying || clickVolume == 0f || !settings.beatSound // no audible beat
+                                pressBarPulse = if (isPlaying && lastBeatAt > 0 && beatInBar >= 0) {
+                                    val pulse = timeSignature.pulseMs(playBpm)
+                                    val ahead = ((pressedAt - lastBeatAt) / pulse).roundToInt() // nearest pulse
+                                    (beatInBar + ahead) % timeSignature.pulsesPerBar
+                                } else 0 // without the beat, a hold starts a bar
                                 pressOnsetError = if (isPlaying && lastBeatAt > 0) {
                                     val interval = timeSignature.pulseMs(playBpm).toFloat()
                                     val phase = ((pressedAt - lastBeatAt) % interval) / interval
@@ -492,9 +511,21 @@ fun RhythmPlayScreen(
                                 var sliding = false
                                 var stepAcc = 0f
                                 val stepPx = 10.dp.toPx() // 1 BPM per 10 dp
+                                // Near the pad's border the tempo keeps moving on its own (faster the longer it stays)
+                                val edgeRadius = 100.dp.toPx()
+                                var edgeDir = 0
+                                var edgeRepeats = 0
                                 try {
                                     while (true) {
-                                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                                        val event = if (sliding && edgeDir != 0) {
+                                            withTimeoutOrNull((140L - edgeRepeats * 8).coerceAtLeast(40)) { awaitPointerEvent() }
+                                        } else awaitPointerEvent()
+                                        if (event == null) { // finger resting at the border: auto-repeat
+                                            pendingBpm = Tempo.clamp(pendingBpm + edgeDir)
+                                            edgeRepeats++
+                                            continue
+                                        }
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                         if (!change.pressed) {
                                             releasedAt = change.uptimeMillis
                                             change.consume()
@@ -511,6 +542,13 @@ fun RhythmPlayScreen(
                                                 stepAcc -= steps * stepPx
                                                 pendingBpm = Tempo.clamp(pendingBpm + steps)
                                             }
+                                            // Direction of the border zone the finger is in: up / slider-forward = faster
+                                            val fromCenter = last - Offset(size.width / 2f, size.height / 2f)
+                                            val dist = fromCenter.getDistance()
+                                            val lean = if (dist > 0f) (fromCenter.x * sliderSign - fromCenter.y) / dist else 0f
+                                            val newDir = if (dist >= edgeRadius && kotlin.math.abs(lean) > 0.3f) (if (lean > 0) 1 else -1) else 0
+                                            if (newDir != edgeDir) edgeRepeats = 0
+                                            edgeDir = newDir
                                         }
                                         change.consume()
                                     }
@@ -592,15 +630,19 @@ fun RhythmPlayScreen(
                         topLeft = Offset(inset, inset), size = arcSize,
                         style = Stroke(stroke, cap = StrokeCap.Round)
                     )
-                    // Beat marks: the ring is divided into the note's beats, so the fill moves with the beat
+                    // Pulse marks: one per click of the time signature (eighths in 6/8), so the fill moves
+                    // with the beat; where a new bar starts, the mark is bigger and gold
                     val radius = (size.width - stroke) / 2
-                    val beats = targetNote.beats
+                    val pulses = targetNote.beats * timeSignature.pulsesPerQuarter
                     var k = 1
-                    while (k < beats) {
-                        val angle = Math.toRadians((-90.0 + 360.0 * k / beats))
+                    while (k < pulses) {
+                        val angle = Math.toRadians((-90.0 + 360.0 * k / pulses))
+                        val barStart = (pressBarPulse + k) % timeSignature.pulsesPerBar == 0
+                        val lit = isHolding && progress * pulses >= k // lit as the fill passes
                         drawCircle(
-                            color = Color.White.copy(alpha = if (isHolding && progress * beats >= k) 0.9f else 0.3f), // lit as the fill passes
-                            radius = stroke * 0.32f,
+                            color = if (barStart) StarGold.copy(alpha = if (lit) 1f else 0.55f)
+                                else Color.White.copy(alpha = if (lit) 0.9f else 0.3f),
+                            radius = stroke * if (barStart) 0.5f else 0.32f,
                             center = Offset(center.x + radius * kotlin.math.cos(angle).toFloat(), center.y + radius * kotlin.math.sin(angle).toFloat())
                         )
                         k++
@@ -831,6 +873,7 @@ private fun LessonBanner(lesson: Lesson, progress: LessonProgress, targetMs: Lon
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(lesson.titleRes), fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface)
+                lesson.timeSignature?.let { MeterBadge(it) }
                 Spacer(Modifier.width(8.dp))
                 StarsRow(progress.stars, size = 16.dp)
             }
@@ -963,4 +1006,18 @@ private fun BarDots(timeSignature: TimeSignature, current: Int, modifier: Modifi
             )
         }
     }
+}
+
+/** Small "3/4" badge for lessons tied to a time signature. */
+@Composable
+fun MeterBadge(timeSignature: TimeSignature) {
+    Text(
+        timeSignature.label,
+        fontSize = 12.sp,
+        color = Color.White.copy(alpha = 0.85f),
+        modifier = Modifier
+            .padding(start = 8.dp)
+            .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp, vertical = 1.dp)
+    )
 }

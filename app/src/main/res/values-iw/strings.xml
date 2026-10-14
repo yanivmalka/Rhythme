@@ -112,4 +112,11 @@
     <string name="history_short">קצר</string>
     <string name="cd_time_signature">משקל</string>
     <string name="note_dotted_half">חצי עם נקודה</string>
+    <string name="cd_beat_sound">הפעלת/השתקת צליל הפעמה</string>
+    <string name="lesson_march_title">מארש</string>
+    <string name="lesson_march_desc">במשקל 2/4: החזיקו חצי, תיבה שלמה.</string>
+    <string name="lesson_waltz_title">ואלס</string>
+    <string name="lesson_waltz_desc">במשקל 3/4: החזיקו חצי עם נקודה, תיבה שלמה.</string>
+    <string name="lesson_six_eight_title">שש־שמיניות</string>
+    <string name="lesson_six_eight_desc">במשקל 6/8: החזיקו רבע עם נקודה, שלוש שמיניות.</string>
 </resources>

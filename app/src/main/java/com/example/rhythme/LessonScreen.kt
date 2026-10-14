@@ -180,11 +180,14 @@ fun LessonCard(
                 NoteGlyph(lesson.targetNoteLength, Color.White, height = 40.dp)
                 Spacer(Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(lesson.titleRes),
-                        fontSize = 18.sp,
-                        color = Color.White
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = stringResource(lesson.titleRes),
+                            fontSize = 18.sp,
+                            color = Color.White
+                        )
+                        lesson.timeSignature?.let { MeterBadge(it) }
+                    }
                     Text(
                         text = stringResource(lesson.descriptionRes),
                         fontSize = 12.sp,

@@ -116,4 +116,11 @@
     <string name="history_short">short</string>
     <string name="cd_time_signature">Time signature</string>
     <string name="note_dotted_half">Dotted half note</string>
+    <string name="cd_beat_sound">Beat sound on/off</string>
+    <string name="lesson_march_title">March</string>
+    <string name="lesson_march_desc">In 2/4: hold the half note, one full bar.</string>
+    <string name="lesson_waltz_title">Waltz</string>
+    <string name="lesson_waltz_desc">In 3/4: hold the dotted half, one full bar.</string>
+    <string name="lesson_six_eight_title">Six-Eight</string>
+    <string name="lesson_six_eight_desc">In 6/8: hold the dotted quarter, three eighths.</string>
 </resources>

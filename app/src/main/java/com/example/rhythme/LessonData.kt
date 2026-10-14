@@ -8,7 +8,8 @@ data class Lesson(
     @StringRes val descriptionRes: Int,
     val targetBpm: Int,
     val targetNoteLength: NoteLength,
-    val order: Int
+    val order: Int,
+    val timeSignature: TimeSignature? = null // meter lessons switch the time signature when opened
 )
 
 /** Note values measured in beats (a quarter note = one beat), so targets follow the tempo. */
@@ -112,6 +113,34 @@ object LessonCurriculum {
             targetBpm = 60,
             targetNoteLength = NoteLength.SIXTEENTH,
             order = 7
+        ),
+        // Meter lessons: each sets its time signature
+        Lesson(
+            id = 8,
+            titleRes = R.string.lesson_march_title,
+            descriptionRes = R.string.lesson_march_desc,
+            targetBpm = 60,
+            targetNoteLength = NoteLength.HALF,
+            order = 8,
+            timeSignature = TimeSignature.TWO_FOUR
+        ),
+        Lesson(
+            id = 9,
+            titleRes = R.string.lesson_waltz_title,
+            descriptionRes = R.string.lesson_waltz_desc,
+            targetBpm = 60,
+            targetNoteLength = NoteLength.DOTTED_HALF,
+            order = 9,
+            timeSignature = TimeSignature.THREE_FOUR
+        ),
+        Lesson(
+            id = 10,
+            titleRes = R.string.lesson_six_eight_title,
+            descriptionRes = R.string.lesson_six_eight_desc,
+            targetBpm = 60,
+            targetNoteLength = NoteLength.DOTTED_QUARTER,
+            order = 10,
+            timeSignature = TimeSignature.SIX_EIGHT
         )
     )
 
