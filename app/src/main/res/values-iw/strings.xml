@@ -11,8 +11,6 @@
     <string name="hint_free_play">החזיקו כדי לנגן. הקשיבו לפעמה.</string>
     <string name="hint_lesson">החזיקו למשך זמן היעד, ואז שחררו.</string>
     <string name="lesson_target">יעד: להחזיק %1$.2f שנ׳</string>
-    <string name="lesson_streak">רצף %1$d/3</string>
-    <string name="lesson_mastered">הושלם ✓</string>
     <string name="lesson_result">החזקת %1$.2f שנ׳ · %2$d%%</string>
 
     <!-- Lessons screen -->
@@ -66,4 +64,21 @@
     <string name="note_dotted_quarter">רבע עם נקודה</string>
     <string name="note_half">חצי</string>
     <string name="note_whole">שלם</string>
+
+    <!-- Stars and lesson progress -->
+    <string name="star_next_1">הכוכב הבא: 3 ברצף, 80% ומעלה</string>
+    <string name="star_next_2">הבא ★★: 3 ברצף, 90% ומעלה</string>
+    <string name="star_next_3">הבא ★★★: 3 ברצף, 90% ומעלה, בלי פעמה</string>
+    <string name="stars_all">כל שלושת הכוכבים!</string>
+    <string name="star_earned_1">הרווחת כוכב!</string>
+    <string name="star_earned_2">כוכב שני!</string>
+    <string name="star_earned_3">שלושה כוכבים! מדהים!</string>
+    <string name="swipe_reset_hint">החליקו שיעור כדי לאפס אותו</string>
+    <string name="lesson_reset_done">התקדמות השיעור אופסה</string>
+    <string name="undo">החזר</string>
+    <string name="reset">איפוס</string>
+    <string name="cancel">ביטול</string>
+    <string name="reset_all">איפוס כל ההתקדמות</string>
+    <string name="reset_all_confirm_title">לאפס את כל השיעורים?</string>
+    <string name="reset_all_confirm_text">פעולה זו מוחקת את הכוכבים וההתקדמות של כל השיעורים.</string>
 </resources>

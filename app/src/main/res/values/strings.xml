@@ -13,8 +13,6 @@
     <string name="hint_free_play">Hold to play. Listen to the beat.</string>
     <string name="hint_lesson">Hold for the target time, then release.</string>
     <string name="lesson_target">Target: hold %1$.2fs</string>
-    <string name="lesson_streak">Streak %1$d/3</string>
-    <string name="lesson_mastered">Mastered ✓</string>
     <string name="lesson_result">You held %1$.2fs · %2$d%%</string>
 
     <!-- Lessons screen -->
@@ -68,4 +66,21 @@
     <string name="note_dotted_quarter">Dotted quarter note</string>
     <string name="note_half">Half note</string>
     <string name="note_whole">Whole note</string>
+
+    <!-- Stars and lesson progress -->
+    <string name="star_next_1">Next ★: 3 in a row at 80%+</string>
+    <string name="star_next_2">Next ★★: 3 in a row at 90%+</string>
+    <string name="star_next_3">Next ★★★: 3 in a row at 90%+ with the beat off</string>
+    <string name="stars_all">All 3 stars!</string>
+    <string name="star_earned_1">Star earned!</string>
+    <string name="star_earned_2">Second star!</string>
+    <string name="star_earned_3">Three stars! Amazing!</string>
+    <string name="swipe_reset_hint">Swipe a lesson to reset it</string>
+    <string name="lesson_reset_done">Lesson progress reset</string>
+    <string name="undo">Undo</string>
+    <string name="reset">Reset</string>
+    <string name="cancel">Cancel</string>
+    <string name="reset_all">Reset all progress</string>
+    <string name="reset_all_confirm_title">Reset all lessons?</string>
+    <string name="reset_all_confirm_text">This clears the stars and progress of every lesson.</string>
 </resources>

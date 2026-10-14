@@ -7,43 +7,65 @@ import kotlin.math.abs
 class ProgressManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("rhythme_progress", Context.MODE_PRIVATE)
 
-    fun recordAttempt(lessonId: Int, accuracy: Float) {
-        val currentProgress = getProgress(lessonId)
+    /**
+     * Records one hold. [solo] = the beat had faded off (the player kept the rhythm alone).
+     * Returns the updated progress; compare its stars with the previous value to celebrate.
+     */
+    fun recordAttempt(lessonId: Int, accuracy: Float, solo: Boolean = false): LessonProgress {
+        val old = getProgress(lessonId)
+        val streak80 = if (accuracy >= 0.8f) old.streak80 + 1 else 0
+        val streak90 = if (accuracy >= 0.9f) old.streak90 + 1 else 0
+        // Only solo holds count toward the third star; holds with the beat audible don't break it
+        val streakSolo = when {
+            !solo -> old.streakSolo
+            accuracy >= 0.9f -> old.streakSolo + 1
+            else -> 0
+        }
+        val need = LessonProgress.STREAK_FOR_STAR
+        var stars = old.stars
+        if (stars == 0 && streak80 >= need) stars = 1
+        if (stars == 1 && streak90 >= need) stars = 2
+        if (stars == 2 && streakSolo >= need) stars = 3
 
-        val newAttempts = currentProgress.attempts + 1
-        val newBestAccuracy = maxOf(currentProgress.bestAccuracy, accuracy)
-        val newStreak = if (accuracy >= 0.8f) currentProgress.streak + 1 else 0
-
-        val isMastered = newStreak >= 3 // Master after 3 good attempts (80%+)
-        val masteredDate = if (isMastered && !currentProgress.isMastered) System.currentTimeMillis() else currentProgress.masteredDate
-
-        val progress = LessonProgress(
-            lessonId = lessonId,
-            attempts = newAttempts,
-            bestAccuracy = newBestAccuracy,
-            isMastered = isMastered,
-            masteredDate = masteredDate,
-            streak = newStreak
+        val progress = old.copy(
+            attempts = old.attempts + 1,
+            bestAccuracy = maxOf(old.bestAccuracy, accuracy),
+            stars = stars,
+            streak80 = streak80,
+            streak90 = streak90,
+            streakSolo = streakSolo,
+            masteredDate = if (stars >= 1 && old.stars == 0) System.currentTimeMillis() else old.masteredDate
         )
-
         saveProgress(progress)
+        return progress
     }
+
+    /** Clears one lesson's progress. */
+    fun reset(lessonId: Int) {
+        val key = "lesson_$lessonId"
+        prefs.edit().apply {
+            prefs.all.keys.filter { it.startsWith("${key}_") }.forEach { remove(it) }
+            apply()
+        }
+    }
+
+    /** Puts back progress saved before a reset (for Undo). */
+    fun restore(progress: LessonProgress) = saveProgress(progress)
 
     fun getProgress(lessonId: Int): LessonProgress {
         val key = "lesson_$lessonId"
         val attempts = prefs.getInt("${key}_attempts", 0)
         val bestAccuracy = prefs.getFloat("${key}_bestAccuracy", 0f)
-        val isMastered = prefs.getBoolean("${key}_isMastered", false)
-        val masteredDate = prefs.getLong("${key}_masteredDate", 0).takeIf { it > 0 }
-        val streak = prefs.getInt("${key}_streak", 0)
-
+        val legacyMastered = prefs.getBoolean("${key}_isMastered", false) // before stars existed
         return LessonProgress(
             lessonId = lessonId,
             attempts = attempts,
             bestAccuracy = bestAccuracy,
-            isMastered = isMastered,
-            masteredDate = masteredDate,
-            streak = streak
+            stars = prefs.getInt("${key}_stars", if (legacyMastered) 1 else 0),
+            streak80 = prefs.getInt("${key}_streak", 0),
+            streak90 = prefs.getInt("${key}_streak90", 0),
+            streakSolo = prefs.getInt("${key}_streakSolo", 0),
+            masteredDate = prefs.getLong("${key}_masteredDate", 0).takeIf { it > 0 }
         )
     }
 
@@ -73,7 +95,10 @@ class ProgressManager(context: Context) {
             putFloat("${key}_bestAccuracy", progress.bestAccuracy)
             putBoolean("${key}_isMastered", progress.isMastered)
             putLong("${key}_masteredDate", progress.masteredDate ?: 0L)
-            putInt("${key}_streak", progress.streak)
+            putInt("${key}_stars", progress.stars)
+            putInt("${key}_streak", progress.streak80)
+            putInt("${key}_streak90", progress.streak90)
+            putInt("${key}_streakSolo", progress.streakSolo)
             apply()
         }
     }

@@ -9,60 +9,142 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LessonScreen(
     progressManager: ProgressManager,
     onLessonSelected: (Lesson) -> Unit,
     onBack: () -> Unit
 ) {
-    val allProgress by remember {
-        mutableStateOf(progressManager.getAllProgress())
-    }
+    var allProgress by remember { mutableStateOf(progressManager.getAllProgress()) }
+    fun refresh() { allProgress = progressManager.getAllProgress() }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .safeDrawingPadding() // keep clear of status and navigation bars
-            .padding(16.dp)
-    ) {
-        // Header
-        Row(
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    var confirmResetAll by remember { mutableStateOf(false) }
+    val resetDone = stringResource(R.string.lesson_reset_done)
+    val undoLabel = stringResource(R.string.undo)
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbar, modifier = Modifier.navigationBarsPadding()) }, // above the nav buttons
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0)
+    ) { innerPadding ->
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxSize()
+                .padding(innerPadding)
+                .safeDrawingPadding() // keep clear of status and navigation bars
+                .padding(16.dp)
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
-            }
-            Text(
-                stringResource(R.string.lessons_title),
-                fontSize = 24.sp,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        // Lessons list
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(LessonCurriculum.lessons) { lesson ->
-                val progress = allProgress.find { it.lessonId == lesson.id } ?: LessonProgress(lesson.id)
-                LessonCard(lesson, progress) {
-                    onLessonSelected(lesson)
+            // Header: back, title, reset all
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
+                }
+                Text(
+                    stringResource(R.string.lessons_title),
+                    fontSize = 24.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = { confirmResetAll = true }) {
+                    Icon(Icons.Filled.RestartAlt, contentDescription = stringResource(R.string.reset_all))
                 }
             }
+            Text(
+                stringResource(R.string.swipe_reset_hint),
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
+            )
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(LessonCurriculum.lessons, key = { it.id }) { lesson ->
+                    val progress = allProgress.find { it.lessonId == lesson.id } ?: LessonProgress(lesson.id)
+                    // Swipe either way to reset this lesson (with Undo); untouched lessons can't be swiped
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { value ->
+                            if (value != SwipeToDismissBoxValue.Settled && progress.attempts > 0) {
+                                progressManager.reset(lesson.id)
+                                refresh()
+                                scope.launch {
+                                    snackbar.currentSnackbarData?.dismiss()
+                                    val result = snackbar.showSnackbar(resetDone, undoLabel, duration = SnackbarDuration.Long) // time to undo
+                                    if (result == SnackbarResult.ActionPerformed) {
+                                        progressManager.restore(progress)
+                                        refresh()
+                                    }
+                                }
+                            }
+                            false // the card springs back; its content shows the reset state
+                        }
+                    )
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        enableDismissFromStartToEnd = progress.attempts > 0,
+                        enableDismissFromEndToStart = progress.attempts > 0,
+                        backgroundContent = { ResetBackground() }
+                    ) {
+                        LessonCard(lesson, progress) { onLessonSelected(lesson) }
+                    }
+                }
+            }
+        }
+    }
+
+    if (confirmResetAll) {
+        AlertDialog(
+            onDismissRequest = { confirmResetAll = false },
+            title = { Text(stringResource(R.string.reset_all_confirm_title)) },
+            text = { Text(stringResource(R.string.reset_all_confirm_text)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    progressManager.reset()
+                    refresh()
+                    confirmResetAll = false
+                }) { Text(stringResource(R.string.reset), color = Color(0xFFFF6B6B)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmResetAll = false }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ResetBackground() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFB3261E)),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.RestartAlt, contentDescription = null, tint = Color.White)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.reset), color = Color.White, fontSize = 16.sp)
         }
     }
 }
@@ -79,7 +161,7 @@ fun LessonCard(
             .clickable { onClick() }
             .padding(4.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (progress.isMastered)
+            containerColor = if (progress.stars == LessonProgress.MAX_STARS)
                 Color(0.2f, 0.6f, 0.3f, 1f)
             else
                 MaterialTheme.colorScheme.surfaceVariant
@@ -110,35 +192,34 @@ fun LessonCard(
                     )
                 }
 
-                // Status indicator
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    if (progress.isMastered) {
-                        Text("⭐", fontSize = 28.sp)
-                        Text(stringResource(R.string.mastered), fontSize = 10.sp, color = Color.White)
-                    } else if (progress.attempts > 0) {
+                // Status: stars earned, best score; arrow if not tried yet
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (progress.attempts > 0) {
+                        StarsRow(progress.stars, size = 20.dp)
                         Text(
                             "${(progress.bestAccuracy * 100).toInt()}%",
-                            fontSize = 16.sp,
-                            color = Color.White
+                            fontSize = 12.sp,
+                            color = Color.White.copy(alpha = 0.8f),
+                            modifier = Modifier.padding(top = 2.dp)
                         )
-                        Text("${progress.streak}/3", fontSize = 10.sp, color = Color.White)
                     } else {
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White)
                     }
                 }
             }
 
-            // Progress bar
-            if (progress.attempts > 0 && !progress.isMastered) {
-                LinearProgressIndicator(
-                    progress = progress.bestAccuracy,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    color = Color(0.3f, 0.7f, 1f)
-                )
+            // Progress toward the next star
+            progress.nextStarStreak?.let { streak ->
+                if (progress.attempts > 0) {
+                    LinearProgressIndicator(
+                        progress = { streak.toFloat() / LessonProgress.STREAK_FOR_STAR },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp),
+                        color = StarGold,
+                        trackColor = Color.White.copy(alpha = 0.15f)
+                    )
+                }
             }
         }
     }

@@ -44,9 +44,7 @@ class MainActivity : ComponentActivity() {
                                 progressManager,
                                 screen.lesson,
                                 onOpenLessons = { currentScreen = Screen.Lessons },
-                                onLessonComplete = { lesson, accuracy ->
-                                    progressManager.recordAttempt(lesson.id, accuracy)
-                                }
+                                onLessonChange = { lesson -> currentScreen = Screen.Play(lesson) }
                             )
                         }
                         is Screen.Lessons -> {

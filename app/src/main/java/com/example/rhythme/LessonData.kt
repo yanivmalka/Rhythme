@@ -23,14 +23,35 @@ enum class NoteLength(val beats: Float, @StringRes val nameRes: Int) {
     fun durationMs(bpm: Int): Long = (beats * 60000f / bpm).toLong()
 }
 
+/**
+ * Stars (kept once earned), each for 3 holds in a row:
+ * 1 = 80%+, 2 = 90%+, 3 = 90%+ with the beat faded off (keeping the rhythm alone).
+ */
 data class LessonProgress(
     val lessonId: Int,
     val attempts: Int = 0,
     val bestAccuracy: Float = 0f,
-    val isMastered: Boolean = false,
-    val masteredDate: Long? = null,
-    val streak: Int = 0
-)
+    val stars: Int = 0,
+    val streak80: Int = 0,
+    val streak90: Int = 0,
+    val streakSolo: Int = 0,
+    val masteredDate: Long? = null
+) {
+    val isMastered: Boolean get() = stars >= 1
+
+    /** Streak toward the next star (0..STREAK_FOR_STAR), or null when all stars are earned. */
+    val nextStarStreak: Int? get() = when (stars) {
+        0 -> streak80
+        1 -> streak90
+        2 -> streakSolo
+        else -> null
+    }
+
+    companion object {
+        const val MAX_STARS = 3
+        const val STREAK_FOR_STAR = 3
+    }
+}
 
 // Lesson curriculum
 object LessonCurriculum {

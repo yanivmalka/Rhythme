@@ -104,6 +104,14 @@ class HapticManager(context: Context) {
         if (generation == holdGeneration && !holdActive) vibrator.cancel()
     }
 
+    /** Celebration: three quick taps and a long one, rising like a fanfare. */
+    fun celebrate() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        holdActive = false
+        vibrator.cancel()
+        vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 40, 70, 40, 70, 40, 90, 220), -1))
+    }
+
     fun stop() {
         holdActive = false
         vibrator.cancel()

@@ -24,6 +24,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -119,7 +122,7 @@ fun RhythmPlayScreen(
     progressManager: ProgressManager,
     currentLesson: Lesson?,
     onOpenLessons: () -> Unit,
-    onLessonComplete: (Lesson, Float) -> Unit
+    onLessonChange: (Lesson) -> Unit
 ) {
     val scope = rememberCoroutineScope()
 
@@ -149,6 +152,7 @@ fun RhythmPlayScreen(
     var holdDurationMs by remember { mutableLongStateOf(0L) }
     var lastProgress by remember { mutableFloatStateOf(0f) }
     var pressOnsetError by remember { mutableFloatStateOf(1f) }
+    var pressSolo by remember { mutableStateOf(false) } // beat faded off at press: counts toward ★★★
 
     // "Press & Hold" hint
     var hintVisible by remember { mutableStateOf(true) }
@@ -157,10 +161,16 @@ fun RhythmPlayScreen(
 
     // Results and lesson progress
     val lesson by rememberUpdatedState(currentLesson)
-    val onComplete by rememberUpdatedState(onLessonComplete)
     var lastResult by remember { mutableStateOf<Pair<Long, Float>?>(null) } // held ms, accuracy
     var lessonProgress by remember {
         mutableStateOf(currentLesson?.let { progressManager.getProgress(it.id) })
+    }
+    var celebrateStars by remember { mutableIntStateOf(0) } // > 0 shows the celebration
+
+    // Swiping to another lesson keeps the beat going; only lesson-specific state resets
+    LaunchedEffect(currentLesson?.id) {
+        lastResult = null
+        lessonProgress = currentLesson?.let { progressManager.getProgress(it.id) }
     }
 
     val targetMs = targetNote.durationMs(playBpm)
@@ -257,317 +267,324 @@ fun RhythmPlayScreen(
         else -> RingBlue
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .safeDrawingPadding() // keep clear of status and navigation bars
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Top,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Top bar: toggles, tone pitch, lessons
-        Row(
+    Box(Modifier.fillMaxSize()) {
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 4.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .safeDrawingPadding() // keep clear of status and navigation bars
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Top,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            IconButton(onClick = { soundEnabled = !soundEnabled }, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    imageVector = if (soundEnabled) Icons.Filled.VolumeMute else Icons.Filled.VolumeOff,
-                    contentDescription = stringResource(R.string.cd_sound_toggle),
-                    tint = if (soundEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-
-            val vibrationLabel = stringResource(R.string.cd_vibration_toggle)
-            IconButton(
-                onClick = { vibrationEnabled = !vibrationEnabled },
-                modifier = Modifier.size(40.dp).semantics { contentDescription = vibrationLabel }
+            // Top bar: toggles, tone pitch, lessons
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("⚡", fontSize = 20.sp, modifier = Modifier.alpha(if (vibrationEnabled) 1f else 0.3f))
-            }
-
-            IconButton(onClick = { lightEnabled = !lightEnabled }, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    imageVector = Icons.Filled.Lightbulb,
-                    contentDescription = stringResource(R.string.cd_light_toggle),
-                    tint = if (lightEnabled) Color.Yellow else MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-
-            PitchPicker(
-                selected = pitchIndex,
-                muted = !soundEnabled,
-                onSelect = { i ->
-                    pitchIndex = i
-                    audioManager.frequency = PITCHES_HZ[i]
-                    if (soundEnabled && !isHolding) {
-                        scope.launch { // short preview of the new pitch
-                            audioManager.startTone(0.3f)
-                            delay(250)
-                            if (!isHolding) audioManager.stopTone()
-                        }
-                    }
-                }
-            )
-
-            IconButton(onClick = onOpenLessons, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    imageVector = Icons.Filled.School,
-                    contentDescription = stringResource(R.string.cd_lessons),
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-
-        // Tempo: value + mark name, beat fade level
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                stringResource(R.string.bpm_label, pendingBpm) + "  ·  " + Tempo.nameFor(pendingBpm),
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f)
-            )
-            if (isPlaying && clickVolume < 1f) {
-                Text(
-                    if (clickVolume <= 0f) stringResource(R.string.beat_off)
-                    else stringResource(R.string.beat_level, (clickVolume * 100).roundToInt()),
-                    fontSize = 13.sp,
-                    color = ReleaseGreen
-                )
-            }
-        }
-        Slider(
-            value = pendingBpm.toFloat(),
-            onValueChange = { pendingBpm = it.roundToInt() },
-            onValueChangeFinished = { playBpm = pendingBpm }, // released: apply right away
-            valueRange = Tempo.MIN.toFloat()..Tempo.MAX.toFloat(),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp)
-        )
-
-        // Transport: << - [play/stop] + >>
-        TransportRow(
-            isPlaying = isPlaying,
-            onPlayStop = { if (isPlaying) isPlaying = false else startPlaying() },
-            onPrevMark = { pendingBpm = Tempo.previousMark(pendingBpm) },
-            onMinus = { pendingBpm = Tempo.clamp(pendingBpm - Tempo.STEP) },
-            onPlus = { pendingBpm = Tempo.clamp(pendingBpm + Tempo.STEP) },
-            onNextMark = { pendingBpm = Tempo.nextMark(pendingBpm) }
-        )
-
-        // Target: lesson banner, or note-value picker in free play (fixed height: layout never shifts)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(60.dp)
-                .padding(horizontal = 8.dp),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            if (currentLesson != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    NoteGlyph(currentLesson.targetNoteLength, MaterialTheme.colorScheme.onSurface, height = 40.dp)
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text(stringResource(currentLesson.titleRes), fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
-                        val status = if (lessonProgress?.isMastered == true) stringResource(R.string.lesson_mastered)
-                            else stringResource(R.string.lesson_streak, lessonProgress?.streak ?: 0)
-                        Text(
-                            stringResource(R.string.lesson_target, targetMs / 1000.0) + "  ·  " + status,
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            } else {
-                NoteValuePicker(selected = freeNote, onSelect = { freeNote = it; lastResult = null })
-            }
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        // Hold pad: beat ripple, progress ring, circle
-        val padColor = when {
-            !lightEnabled || !isHolding -> PadBlue
-            overshoot -> OverRed
-            inWindow -> ReleaseGreen
-            else -> PadBlue
-        }
-        // Liquid-style fill level while holding (light on, before the release window)
-        val fillLevel = if (lightEnabled && isHolding && !inWindow && !overshoot) progress.coerceIn(0f, 1f) else 0f
-        val ringAlpha by animateFloatAsState(
-            targetValue = if (isHolding) 1f else 0f,
-            animationSpec = tween(durationMillis = if (isHolding) 120 else 900),
-            label = "ringAlpha"
-        )
-        Box(
-            modifier = Modifier
-                .size(300.dp)
-                .pointerInput(Unit) {
-                    // Times come from the touch events themselves (ms-exact), not from when this code
-                    // runs, which can lag a frame: that matters for short notes like sixteenths.
-                    awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            val pressedAt = down.uptimeMillis
-                            isHolding = true
-                            startTime = pressedAt
-                            holdDurationMs = 0
-                            lastInteractionAt = pressedAt
-                            pressOnsetError = if (isPlaying && lastBeatAt > 0) {
-                                val interval = 60000f / playBpm
-                                val phase = ((pressedAt - lastBeatAt) % interval) / interval
-                                min(phase, 1f - phase)
-                            } else 1f
-                            if (soundEnabled) audioManager.startTone(0.3f)
-                            if (vibrationEnabled) {
-                                // Whole-hold vibration: buzz, a gap + tick at each upcoming beat, release pulse
-                                val beats = if (isPlaying && lastBeatAt > 0) {
-                                    val interval = 60000.0 / playBpm
-                                    val horizon = pressedAt + currentTargetMs * 2 + 1500
-                                    generateSequence(lastBeatAt + interval) { it + interval }
-                                        .map { it.toLong() }
-                                        .dropWhile { it < pressedAt - 70 }
-                                        .takeWhile { it < horizon }
-                                        .toList()
-                                } else emptyList()
-                                hapticManager.startHold(pressedAt, currentTargetMs, beats)
-                            }
-
-                            val up = waitForUpOrCancellation()
-                            up?.consume()
-                            val heldMs = (up?.uptimeMillis ?: SystemClock.uptimeMillis()) - startTime
-                            isHolding = false
-                            audioManager.stopTone()
-                            val (stopIn, holdId) = hapticManager.endHold(SystemClock.uptimeMillis())
-                            if (stopIn > 0) scope.launch { delay(stopIn); hapticManager.stopHold(holdId) } // let the pulse finish
-                            lastInteractionAt = SystemClock.uptimeMillis()
-                            lastProgress = heldMs.toFloat() / currentTargetMs
-                            if (heldMs < MIN_HOLD_MS) return@awaitEachGesture
-
-                            // The player gets it: let the hint go after a couple of holds
-                            holdsSinceHint++
-                            if (holdsSinceHint >= HOLDS_TO_HIDE_HINT) hintVisible = false
-
-                            val accuracy = progressManager.calculateAccuracy(currentTargetMs, heldMs)
-                            lastResult = heldMs to accuracy
-
-                            // On the beat and the right length: fade the click so they carry the rhythm
-                            if (isPlaying) {
-                                val good = accuracy >= 0.8f && pressOnsetError <= ONSET_TOLERANCE
-                                val next = if (good) clickVolume - 0.2f else clickVolume + 0.4f
-                                clickVolume = (next * 10).roundToInt().coerceIn(0, 10) / 10f // whole steps: reaches exactly 0
-                            }
-
-                            lesson?.let { l ->
-                                onComplete(l, accuracy)
-                                lessonProgress = progressManager.getProgress(l.id)
-                            }
-                    }
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            // Beat ripple: expands and fades behind everything (draw-only, no layout change)
-            if (isPlaying) {
-                Box(
-                    modifier = Modifier
-                        .size(262.dp)
-                        .graphicsLayer {
-                            val p = ripple.value
-                            scaleX = 1f + 0.12f * p
-                            scaleY = 1f + 0.12f * p
-                            alpha = (1f - p) * 0.8f
-                        }
-                        .border(width = 3.dp, color = RingBlue, shape = CircleShape)
-                )
-            }
-
-            // Progress ring: fills toward the target; green = release now, red = too long
-            Canvas(modifier = Modifier.size(262.dp)) {
-                val stroke = 9.dp.toPx()
-                val inset = stroke / 2
-                val arcSize = Size(size.width - stroke, size.height - stroke)
-                drawArc(
-                    color = Color.White.copy(alpha = 0.08f),
-                    startAngle = 0f, sweepAngle = 360f, useCenter = false,
-                    topLeft = Offset(inset, inset), size = arcSize, style = Stroke(stroke)
-                )
-                drawArc(
-                    color = stateColor.copy(alpha = ringAlpha),
-                    startAngle = -90f, sweepAngle = 360f * progress.coerceIn(0f, 1f), useCenter = false,
-                    topLeft = Offset(inset, inset), size = arcSize,
-                    style = Stroke(stroke, cap = StrokeCap.Round)
-                )
-                // Beat marks: the ring is divided into the note's beats, so the fill moves with the beat
-                val radius = (size.width - stroke) / 2
-                val beats = targetNote.beats
-                var k = 1
-                while (k < beats) {
-                    val angle = Math.toRadians((-90.0 + 360.0 * k / beats))
-                    drawCircle(
-                        color = Color.White.copy(alpha = if (isHolding && progress * beats >= k) 0.9f else 0.3f), // lit as the fill passes
-                        radius = stroke * 0.32f,
-                        center = Offset(center.x + radius * kotlin.math.cos(angle).toFloat(), center.y + radius * kotlin.math.sin(angle).toFloat())
+                IconButton(onClick = { soundEnabled = !soundEnabled }, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        imageVector = if (soundEnabled) Icons.Filled.VolumeMute else Icons.Filled.VolumeOff,
+                        contentDescription = stringResource(R.string.cd_sound_toggle),
+                        tint = if (soundEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.size(24.dp)
                     )
-                    k++
+                }
+
+                val vibrationLabel = stringResource(R.string.cd_vibration_toggle)
+                IconButton(
+                    onClick = { vibrationEnabled = !vibrationEnabled },
+                    modifier = Modifier.size(40.dp).semantics { contentDescription = vibrationLabel }
+                ) {
+                    Text("⚡", fontSize = 20.sp, modifier = Modifier.alpha(if (vibrationEnabled) 1f else 0.3f))
+                }
+
+                IconButton(onClick = { lightEnabled = !lightEnabled }, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.Lightbulb,
+                        contentDescription = stringResource(R.string.cd_light_toggle),
+                        tint = if (lightEnabled) Color.Yellow else MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                PitchPicker(
+                    selected = pitchIndex,
+                    muted = !soundEnabled,
+                    onSelect = { i ->
+                        pitchIndex = i
+                        audioManager.frequency = PITCHES_HZ[i]
+                        if (soundEnabled && !isHolding) {
+                            scope.launch { // short preview of the new pitch
+                                audioManager.startTone(0.3f)
+                                delay(250)
+                                if (!isHolding) audioManager.stopTone()
+                            }
+                        }
+                    }
+                )
+
+                IconButton(onClick = onOpenLessons, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.School,
+                        contentDescription = stringResource(R.string.cd_lessons),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
                 }
             }
 
-            // Main circle: fixed size, never moves
+            // Tempo: value + mark name, beat fade level
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(R.string.bpm_label, pendingBpm) + "  ·  " + Tempo.nameFor(pendingBpm),
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                if (isPlaying && clickVolume < 1f) {
+                    Text(
+                        if (clickVolume <= 0f) stringResource(R.string.beat_off)
+                        else stringResource(R.string.beat_level, (clickVolume * 100).roundToInt()),
+                        fontSize = 13.sp,
+                        color = ReleaseGreen
+                    )
+                }
+            }
+            Slider(
+                value = pendingBpm.toFloat(),
+                onValueChange = { pendingBpm = it.roundToInt() },
+                onValueChangeFinished = { playBpm = pendingBpm }, // released: apply right away
+                valueRange = Tempo.MIN.toFloat()..Tempo.MAX.toFloat(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+            )
+
+            // Transport: << - [play/stop] + >>
+            TransportRow(
+                isPlaying = isPlaying,
+                onPlayStop = { if (isPlaying) isPlaying = false else startPlaying() },
+                onPrevMark = { pendingBpm = Tempo.previousMark(pendingBpm) },
+                onMinus = { pendingBpm = Tempo.clamp(pendingBpm - Tempo.STEP) },
+                onPlus = { pendingBpm = Tempo.clamp(pendingBpm + Tempo.STEP) },
+                onNextMark = { pendingBpm = Tempo.nextMark(pendingBpm) }
+            )
+
+            // Target: lesson banner, or note-value picker in free play (fixed height: layout never shifts)
             Box(
                 modifier = Modifier
-                    .size(240.dp)
-                    .clip(CircleShape)
-                    .background(padColor)
-                    .drawBehind {
-                        if (fillLevel > 0f) {
-                            val top = size.height * (1f - fillLevel)
-                            drawRect(FillBlue, topLeft = Offset(0f, top), size = Size(size.width, size.height - top))
+                    .fillMaxWidth()
+                    .height(if (currentLesson != null) 92.dp else 60.dp)
+                    .padding(horizontal = 8.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (currentLesson != null) {
+                    LessonPager(
+                        current = currentLesson,
+                        currentProgress = lessonProgress,
+                        progressManager = progressManager,
+                        bpm = playBpm,
+                        onChange = onLessonChange
+                    )
+                } else {
+                    NoteValuePicker(selected = freeNote, onSelect = { freeNote = it; lastResult = null })
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Hold pad: beat ripple, progress ring, circle
+            val padColor = when {
+                !lightEnabled || !isHolding -> PadBlue
+                overshoot -> OverRed
+                inWindow -> ReleaseGreen
+                else -> PadBlue
+            }
+            // Liquid-style fill level while holding (light on, before the release window)
+            val fillLevel = if (lightEnabled && isHolding && !inWindow && !overshoot) progress.coerceIn(0f, 1f) else 0f
+            val ringAlpha by animateFloatAsState(
+                targetValue = if (isHolding) 1f else 0f,
+                animationSpec = tween(durationMillis = if (isHolding) 120 else 900),
+                label = "ringAlpha"
+            )
+            Box(
+                modifier = Modifier
+                    .size(300.dp)
+                    .pointerInput(Unit) {
+                        // Times come from the touch events themselves (ms-exact), not from when this code
+                        // runs, which can lag a frame: that matters for short notes like sixteenths.
+                        awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val pressedAt = down.uptimeMillis
+                                isHolding = true
+                                startTime = pressedAt
+                                holdDurationMs = 0
+                                lastInteractionAt = pressedAt
+                                pressSolo = isPlaying && clickVolume == 0f
+                                pressOnsetError = if (isPlaying && lastBeatAt > 0) {
+                                    val interval = 60000f / playBpm
+                                    val phase = ((pressedAt - lastBeatAt) % interval) / interval
+                                    min(phase, 1f - phase)
+                                } else 1f
+                                if (soundEnabled) audioManager.startTone(0.3f)
+                                if (vibrationEnabled) {
+                                    // Whole-hold vibration: buzz, a gap + tick at each upcoming beat, release pulse
+                                    val beats = if (isPlaying && lastBeatAt > 0) {
+                                        val interval = 60000.0 / playBpm
+                                        val horizon = pressedAt + currentTargetMs * 2 + 1500
+                                        generateSequence(lastBeatAt + interval) { it + interval }
+                                            .map { it.toLong() }
+                                            .dropWhile { it < pressedAt - 70 }
+                                            .takeWhile { it < horizon }
+                                            .toList()
+                                    } else emptyList()
+                                    hapticManager.startHold(pressedAt, currentTargetMs, beats)
+                                }
+
+                                val up = waitForUpOrCancellation()
+                                up?.consume()
+                                val heldMs = (up?.uptimeMillis ?: SystemClock.uptimeMillis()) - startTime
+                                isHolding = false
+                                audioManager.stopTone()
+                                val (stopIn, holdId) = hapticManager.endHold(SystemClock.uptimeMillis())
+                                if (stopIn > 0) scope.launch { delay(stopIn); hapticManager.stopHold(holdId) } // let the pulse finish
+                                lastInteractionAt = SystemClock.uptimeMillis()
+                                lastProgress = heldMs.toFloat() / currentTargetMs
+                                if (heldMs < MIN_HOLD_MS) return@awaitEachGesture
+
+                                // The player gets it: let the hint go after a couple of holds
+                                holdsSinceHint++
+                                if (holdsSinceHint >= HOLDS_TO_HIDE_HINT) hintVisible = false
+
+                                val accuracy = progressManager.calculateAccuracy(currentTargetMs, heldMs)
+                                lastResult = heldMs to accuracy
+
+                                // On the beat and the right length: fade the click so they carry the rhythm
+                                if (isPlaying) {
+                                    val good = accuracy >= 0.8f && pressOnsetError <= ONSET_TOLERANCE
+                                    val next = if (good) clickVolume - 0.2f else clickVolume + 0.4f
+                                    clickVolume = (next * 10).roundToInt().coerceIn(0, 10) / 10f // whole steps: reaches exactly 0
+                                }
+
+                                lesson?.let { l ->
+                                    val starsBefore = lessonProgress?.stars ?: 0
+                                    val updated = progressManager.recordAttempt(l.id, accuracy, solo = pressSolo)
+                                    lessonProgress = updated
+                                    if (updated.stars > starsBefore) {
+                                        celebrateStars = updated.stars
+                                        audioManager.playChime(doubleArrayOf(523.25, 659.25, 783.99, 1046.50)) // C E G C
+                                        if (vibrationEnabled) hapticManager.celebrate()
+                                    }
+                                }
                         }
                     },
                 contentAlignment = Alignment.Center
             ) {
-                PadLabel(
-                    text = when {
-                        isHolding && inWindow -> stringResource(R.string.release_now)
-                        isHolding && !overshoot && hintVisible -> stringResource(R.string.holding)
-                        !isHolding && hintVisible -> stringResource(R.string.press_and_hold)
-                        else -> null
-                    },
-                    seconds = if (isHolding) holdDurationMs / 1000.0 else null
-                )
+                // Beat ripple: expands and fades behind everything (draw-only, no layout change)
+                if (isPlaying) {
+                    Box(
+                        modifier = Modifier
+                            .size(262.dp)
+                            .graphicsLayer {
+                                val p = ripple.value
+                                scaleX = 1f + 0.12f * p
+                                scaleY = 1f + 0.12f * p
+                                alpha = (1f - p) * 0.8f
+                            }
+                            .border(width = 3.dp, color = RingBlue, shape = CircleShape)
+                    )
+                }
+
+                // Progress ring: fills toward the target; green = release now, red = too long
+                Canvas(modifier = Modifier.size(262.dp)) {
+                    val stroke = 9.dp.toPx()
+                    val inset = stroke / 2
+                    val arcSize = Size(size.width - stroke, size.height - stroke)
+                    drawArc(
+                        color = Color.White.copy(alpha = 0.08f),
+                        startAngle = 0f, sweepAngle = 360f, useCenter = false,
+                        topLeft = Offset(inset, inset), size = arcSize, style = Stroke(stroke)
+                    )
+                    drawArc(
+                        color = stateColor.copy(alpha = ringAlpha),
+                        startAngle = -90f, sweepAngle = 360f * progress.coerceIn(0f, 1f), useCenter = false,
+                        topLeft = Offset(inset, inset), size = arcSize,
+                        style = Stroke(stroke, cap = StrokeCap.Round)
+                    )
+                    // Beat marks: the ring is divided into the note's beats, so the fill moves with the beat
+                    val radius = (size.width - stroke) / 2
+                    val beats = targetNote.beats
+                    var k = 1
+                    while (k < beats) {
+                        val angle = Math.toRadians((-90.0 + 360.0 * k / beats))
+                        drawCircle(
+                            color = Color.White.copy(alpha = if (isHolding && progress * beats >= k) 0.9f else 0.3f), // lit as the fill passes
+                            radius = stroke * 0.32f,
+                            center = Offset(center.x + radius * kotlin.math.cos(angle).toFloat(), center.y + radius * kotlin.math.sin(angle).toFloat())
+                        )
+                        k++
+                    }
+                }
+
+                // Main circle: fixed size, never moves
+                Box(
+                    modifier = Modifier
+                        .size(240.dp)
+                        .clip(CircleShape)
+                        .background(padColor)
+                        .drawBehind {
+                            if (fillLevel > 0f) {
+                                val top = size.height * (1f - fillLevel)
+                                drawRect(FillBlue, topLeft = Offset(0f, top), size = Size(size.width, size.height - top))
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    PadLabel(
+                        text = when {
+                            isHolding && inWindow -> stringResource(R.string.release_now)
+                            isHolding && !overshoot && hintVisible -> stringResource(R.string.holding)
+                            !isHolding && hintVisible -> stringResource(R.string.press_and_hold)
+                            else -> null
+                        },
+                        seconds = if (isHolding) holdDurationMs / 1000.0 else null
+                    )
+                }
             }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Bottom: hint, or the last attempt's result
+            val result = lastResult
+            Text(
+                text = when {
+                    result != null -> stringResource(R.string.lesson_result, result.first / 1000.0, (result.second * 100).toInt())
+                    currentLesson != null -> stringResource(R.string.hint_lesson)
+                    else -> stringResource(R.string.hint_free_play)
+                },
+                fontSize = 14.sp,
+                color = when {
+                    result == null -> MaterialTheme.colorScheme.onSurfaceVariant
+                    result.second >= 0.8f -> Color(0xFF66DD77)
+                    result.second >= 0.5f -> Color(0xFFFFC857)
+                    else -> OverRed
+                }
+            )
         }
 
-        Spacer(modifier = Modifier.weight(1f))
-
-        // Bottom: hint, or the last attempt's result
-        val result = lastResult
-        Text(
-            text = when {
-                result != null -> stringResource(R.string.lesson_result, result.first / 1000.0, (result.second * 100).toInt())
-                currentLesson != null -> stringResource(R.string.hint_lesson)
-                else -> stringResource(R.string.hint_free_play)
-            },
-            fontSize = 14.sp,
-            color = when {
-                result == null -> MaterialTheme.colorScheme.onSurfaceVariant
-                result.second >= 0.8f -> Color(0xFF66DD77)
-                result.second >= 0.5f -> Color(0xFFFFC857)
-                else -> OverRed
-            }
-        )
+        // Star earned: full-screen celebration on top
+        if (celebrateStars > 0) {
+            StarCelebration(stars = celebrateStars, onDone = { celebrateStars = 0 })
+        }
     }
 }
 
@@ -692,6 +709,95 @@ private fun NoteValuePicker(selected: NoteLength, onSelect: (NoteLength) -> Unit
             ) {
                 NoteGlyph(note, if (isSelected) Color.White else Color.White.copy(alpha = 0.7f), height = 28.dp)
             }
+        }
+    }
+}
+
+/**
+ * Lesson banner as a pager: swipe to the neighbouring lesson, which slides in live.
+ * The lesson switches as soon as the swipe passes halfway, without stopping the beat.
+ */
+@Composable
+private fun LessonPager(
+    current: Lesson,
+    currentProgress: LessonProgress?,
+    progressManager: ProgressManager,
+    bpm: Int,
+    onChange: (Lesson) -> Unit
+) {
+    val lessons = LessonCurriculum.lessons
+    val pagerState = rememberPagerState(
+        initialPage = lessons.indexOfFirst { it.id == current.id }.coerceAtLeast(0)
+    ) { lessons.size }
+    val currentId by rememberUpdatedState(current.id)
+    val change by rememberUpdatedState(onChange)
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }.collect { page ->
+            if (lessons[page].id != currentId) change(lessons[page])
+        }
+    }
+
+    Column {
+        HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
+            val lesson = lessons[page]
+            val progress = if (lesson.id == current.id && currentProgress != null) currentProgress
+                else remember(lesson.id) { progressManager.getProgress(lesson.id) }
+            LessonBanner(lesson, progress, lesson.targetNoteLength.durationMs(bpm))
+        }
+        // Page dots
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 2.dp),
+            horizontalArrangement = Arrangement.Center
+        ) {
+            lessons.indices.forEach { i ->
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 3.dp)
+                        .size(if (i == pagerState.currentPage) 7.dp else 5.dp)
+                        .background(
+                            Color.White.copy(alpha = if (i == pagerState.currentPage) 0.9f else 0.3f),
+                            CircleShape
+                        )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LessonBanner(lesson: Lesson, progress: LessonProgress, targetMs: Long) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxSize()) {
+        NoteGlyph(lesson.targetNoteLength, MaterialTheme.colorScheme.onSurface, height = 40.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(lesson.titleRes), fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.width(8.dp))
+                StarsRow(progress.stars, size = 16.dp)
+            }
+            Text(
+                stringResource(R.string.lesson_target, targetMs / 1000.0),
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            // Live progress toward the next star: rule + dots for the current streak
+            val streak = progress.nextStarStreak
+            Text(
+                if (streak == null) stringResource(R.string.stars_all)
+                else stringResource(
+                    when (progress.stars) {
+                        0 -> R.string.star_next_1
+                        1 -> R.string.star_next_2
+                        else -> R.string.star_next_3
+                    }
+                ) + "  " + "●".repeat(streak.coerceAtMost(LessonProgress.STREAK_FOR_STAR)) +
+                    "○".repeat((LessonProgress.STREAK_FOR_STAR - streak).coerceAtLeast(0)),
+                fontSize = 12.sp,
+                color = StarGold,
+                maxLines = 1
+            )
         }
     }
 }

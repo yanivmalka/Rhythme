@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Process
 import android.util.Log
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.PI
 import kotlin.math.exp
 import kotlin.math.sin
@@ -24,6 +25,7 @@ class AudioManager {
     @Volatile private var toneVolume = 0.3f
     private val clickRequested = AtomicBoolean(false)
     @Volatile private var clickVolume = 1f
+    private val chimeRequested = AtomicReference<FloatArray?>(null)
     @Volatile private var running = false
     private var thread: Thread? = null
 
@@ -65,6 +67,25 @@ class AudioManager {
         clickRequested.set(true)
     }
 
+    /**
+     * Rising bell arpeggio for celebrations: notes start [gapMs] apart and ring out,
+     * overlapping. Rendered here once, then mixed by the audio thread.
+     */
+    fun playChime(frequencies: DoubleArray, gapMs: Int = 110) {
+        val ringMs = 600
+        val total = ((frequencies.size - 1) * gapMs + ringMs) * sampleRate / 1000
+        val out = FloatArray(total)
+        frequencies.forEachIndexed { n, f ->
+            val start = n * gapMs * sampleRate / 1000
+            for (i in 0 until ringMs * sampleRate / 1000) {
+                val t = i.toDouble() / sampleRate
+                val bell = sin(2 * PI * f * t) + 0.35 * sin(2 * PI * f * 2 * t) // fundamental + octave shimmer
+                out[start + i] += (bell * exp(-t * 6) * 0.22).toFloat()
+            }
+        }
+        chimeRequested.set(out)
+    }
+
     fun release() {
         stopTone()
         stop()
@@ -86,9 +107,12 @@ class AudioManager {
         var phase = 0.0
         var gain = 0f
         var clickPos = click.size
+        var chime: FloatArray? = null
+        var chimePos = 0
 
         while (running) {
             if (clickRequested.getAndSet(false)) clickPos = 0
+            chimeRequested.getAndSet(null)?.let { chime = it; chimePos = 0 }
             val phaseStep = 2.0 * PI * frequency / sampleRate
             val clickGain = clickVolume
             val target = if (toneOn) toneVolume else 0f
@@ -98,6 +122,7 @@ class AudioManager {
                 phase += phaseStep
                 if (phase > 2.0 * PI) phase -= 2.0 * PI
                 if (clickPos < click.size) s += click[clickPos++] * clickGain
+                chime?.let { c -> if (chimePos < c.size) s += c[chimePos++] else chime = null }
                 buffer[i] = (s.coerceIn(-1f, 1f) * Short.MAX_VALUE).toInt().toShort()
             }
             track.write(buffer, 0, chunkSize) // blocks, pacing the loop
