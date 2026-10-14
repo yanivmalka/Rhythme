@@ -23,7 +23,7 @@ fun NoteGlyph(note: NoteLength, color: Color, modifier: Modifier = Modifier, hei
     Canvas(modifier.size(width = height * 0.75f, height = height)) {
         val w = size.width
         val h = size.height
-        val hollow = note == NoteLength.HALF || note == NoteLength.WHOLE
+        val hollow = note == NoteLength.HALF || note == NoteLength.DOTTED_HALF || note == NoteLength.WHOLE
         val hasStem = note != NoteLength.WHOLE
 
         val rx = w * if (note == NoteLength.WHOLE) 0.34f else 0.28f
@@ -60,7 +60,7 @@ fun NoteGlyph(note: NoteLength, color: Color, modifier: Modifier = Modifier, hei
             }
         }
 
-        if (note == NoteLength.DOTTED_QUARTER) {
+        if (note == NoteLength.DOTTED_QUARTER || note == NoteLength.DOTTED_HALF) {
             drawCircle(color, radius = w * 0.07f, center = Offset(cx + rx + w * 0.26f, cy - ry * 0.1f))
         }
     }

@@ -27,3 +27,25 @@ object Tempo {
 
     fun clamp(bpm: Int): Int = bpm.coerceIn(MIN, MAX)
 }
+
+/**
+ * Time signatures. A "pulse" is one click: a quarter in x/4, an eighth in 6/8 (BPM always counts
+ * quarters). Accent per pulse in the bar: 2 = strong (beat 1), 1 = medium, 0 = normal.
+ */
+enum class TimeSignature(
+    val label: String,
+    val pulsesPerBar: Int,
+    val pulsesPerQuarter: Int,
+    val accents: IntArray,
+    val barQuarters: Float
+) {
+    TWO_FOUR("2/4", 2, 1, intArrayOf(2, 0), 2f),
+    THREE_FOUR("3/4", 3, 1, intArrayOf(2, 0, 0), 3f),
+    FOUR_FOUR("4/4", 4, 1, intArrayOf(2, 0, 0, 0), 4f),
+    SIX_EIGHT("6/8", 6, 2, intArrayOf(2, 0, 0, 1, 0, 0), 3f);
+
+    fun pulseMs(bpm: Int): Double = 60000.0 / bpm / pulsesPerQuarter
+
+    /** Note values that fit in one bar. */
+    fun fits(note: NoteLength): Boolean = note.beats <= barQuarters
+}

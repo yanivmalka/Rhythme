@@ -114,4 +114,6 @@
     <string name="tip_short">Your holds tend to be short. Hold on a little longer.</string>
     <string name="history_long">long</string>
     <string name="history_short">short</string>
+    <string name="cd_time_signature">Time signature</string>
+    <string name="note_dotted_half">Dotted half note</string>
 </resources>

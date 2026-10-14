@@ -39,11 +39,13 @@ class HapticManager(context: Context) {
     private var holdActive = false
     private var holdGeneration = 0
 
-    /** Short, firm tap on each beat. Skipped during a hold: the hold pattern contains its own ticks. */
-    fun tick() {
+    /** Tap on each beat, longer when accented (beat 1 of the bar). Skipped during a hold: the hold pattern has its own ticks. */
+    fun tick(accent: Int = 0) {
         if (holdActive || SystemClock.uptimeMillis() < pulseUntil) return
-        vibrate(25, 200)
+        vibrate(tickMs(accent), 255)
     }
+
+    private fun tickMs(accent: Int): Long = when (accent) { 2 -> 50L; 1 -> 35L; else -> 25L }
 
     /**
      * Plays a hold as one waveform, so timing doesn't depend on the UI thread: a buzz with a
@@ -52,15 +54,23 @@ class HapticManager(context: Context) {
      * [playFrom] > [startAt] rebuilds the rest of a hold already in progress (e.g. the tempo
      * changed). All times are SystemClock.uptimeMillis().
      */
-    fun startHold(startAt: Long, targetMs: Long, beatTimes: List<Long>, beatIntervalMs: Double, playFrom: Long = startAt) {
+    fun startHold(startAt: Long, targetMs: Long, beats: BeatGrid, playFrom: Long = startAt) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val step = 10L
         val offset = playFrom - startAt          // how far into the hold this pattern starts
         val t = targetMs - offset                // target, relative to playFrom (may be past)
         val afterPulse = (t + 260).coerceAtLeast(0) // release pulse plus a short silence
 
+        // Beats from playFrom on (relative ms) with their accents
+        val interval = beats.intervalMs
+        val firstK = kotlin.math.ceil((playFrom - 70 - beats.origin) / interval).toLong()
+        val upcoming = (0 until 64).map { j ->
+            val k = firstK + j
+            (beats.origin + k * interval - playFrom).toLong() to beats.accentAt(k)
+        }
         // The loop starts at the first beat gap after the pulse
-        val loopStart = beatTimes.map { it - playFrom - BEAT_GAP_BEFORE }.firstOrNull { it >= afterPulse } ?: afterPulse
+        val loopBeat = upcoming.indexOfFirst { it.first - BEAT_GAP_BEFORE >= afterPulse }.coerceAtLeast(0)
+        val loopStart = (upcoming[loopBeat].first - BEAT_GAP_BEFORE).coerceAtLeast(0)
 
         // Part 1, played once: swelling buzz, beat gaps + ticks, release pulse
         val grid = IntArray(((loopStart + step - 1) / step).toInt()) { i ->
@@ -72,10 +82,9 @@ class HapticManager(context: Context) {
                 grid[i.toInt()] = amplitude
             }
         }
-        for (beat in beatTimes) {
-            val at = beat - playFrom
+        for ((at, accent) in upcoming.take(loopBeat)) {
             set(at - BEAT_GAP_BEFORE, at + BEAT_GAP_AFTER, 0) // gap around the beat...
-            set(at, at + TICK_MS, 255)                        // ...with the tick in it
+            set(at, at + tickMs(accent), 255)                 // ...with the tick in it
         }
         if (t + 190 > 0) { // pulse not over yet: gap, buzz, gap, buzz, silence
             set(t - 60, t + 260, 0)
@@ -83,13 +92,15 @@ class HapticManager(context: Context) {
             set(t + 130, t + 190, 255)
         }
 
-        // Part 2, repeated until release: one beat of buzz with its gap + tick
-        val period = beatIntervalMs.toLong().coerceAtLeast(BEAT_GAP_BEFORE + BEAT_GAP_AFTER + step)
-        val loop = IntArray((period / step).toInt()) { i ->
-            val ms = i * step
+        // Part 2, repeated until release: one bar of buzz with a gap + (accented) tick per beat
+        val period = interval.toLong().coerceAtLeast(BEAT_GAP_BEFORE + BEAT_GAP_AFTER + step)
+        val loop = IntArray((period * beats.pulsesPerBar / step).toInt()) { i ->
+            val beatInLoop = (i * step / period).toInt()
+            val ms = i * step - beatInLoop * period
+            val tick = tickMs(upcoming[(loopBeat + beatInLoop).coerceAtMost(upcoming.lastIndex)].second)
             when {
-                ms in BEAT_GAP_BEFORE until BEAT_GAP_BEFORE + TICK_MS -> 255 // the beat tick
-                ms < BEAT_GAP_BEFORE + BEAT_GAP_AFTER -> 0                   // gap around it
+                ms in BEAT_GAP_BEFORE until BEAT_GAP_BEFORE + tick -> 255 // the beat tick
+                ms < BEAT_GAP_BEFORE + BEAT_GAP_AFTER -> 0              // gap around it
                 else -> 120
             }
         }
@@ -150,4 +161,9 @@ class HapticManager(context: Context) {
         holdActive = false
         vibrator.cancel()
     }
+}
+
+/** Beat positions for a hold: beat k is at origin + k * intervalMs; origin is a downbeat (beat 1). */
+class BeatGrid(val origin: Double, val intervalMs: Double, val pulsesPerBar: Int, private val accents: IntArray) {
+    fun accentAt(k: Long): Int = accents[Math.floorMod(k, pulsesPerBar.toLong()).toInt()]
 }

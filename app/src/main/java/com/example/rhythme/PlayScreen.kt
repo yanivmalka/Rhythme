@@ -28,6 +28,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FastForward
@@ -41,6 +42,8 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -113,6 +116,7 @@ class PlaySettings(private val prefs: SharedPreferences) {
     private val note = mutableStateOf(enumOr(prefs.getString("note", null), NoteLength.QUARTER))
     private val voice = mutableStateOf(enumOr(prefs.getString("instrument", null), Instrument.PURE))
     private val name = mutableStateOf(prefs.getString("profile_name", "") ?: "")
+    private val meter = mutableStateOf(enumOr(prefs.getString("time_signature", null), TimeSignature.FOUR_FOUR))
 
     var soundEnabled: Boolean get() = sound.value; set(v) { sound.value = v; prefs.edit().putBoolean("sound", v).apply() }
     var vibrationEnabled: Boolean get() = vibration.value; set(v) { vibration.value = v; prefs.edit().putBoolean("vibration", v).apply() }
@@ -121,6 +125,7 @@ class PlaySettings(private val prefs: SharedPreferences) {
     var freeNote: NoteLength get() = note.value; set(v) { note.value = v; prefs.edit().putString("note", v.name).apply() }
     var instrument: Instrument get() = voice.value; set(v) { voice.value = v; prefs.edit().putString("instrument", v.name).apply() }
     var profileName: String get() = name.value; set(v) { name.value = v; prefs.edit().putString("profile_name", v).apply() }
+    var timeSignature: TimeSignature get() = meter.value; set(v) { meter.value = v; prefs.edit().putString("time_signature", v.name).apply() }
 
     private companion object {
         inline fun <reified T : Enum<T>> enumOr(saved: String?, default: T): T =
@@ -164,6 +169,8 @@ fun RhythmPlayScreen(
     var beatTick by remember { mutableIntStateOf(0) }
     var lastBeatAt by remember { mutableLongStateOf(0L) }
     var clickVolume by remember { mutableFloatStateOf(1f) } // fades as the player locks in
+    var beatInBar by remember { mutableIntStateOf(-1) } // pulse index in the bar of the last beat (0 = beat 1)
+    val timeSignature = settings.timeSignature
     val ripple = remember { Animatable(1f) }
 
     // Hold
@@ -229,20 +236,24 @@ fun RhythmPlayScreen(
     LaunchedEffect(playBpm, targetNote) { clickVolume = 1f } // new tempo or note: full beat again
 
     // Beat clock: scheduled on absolute times so it never drifts
-    LaunchedEffect(isPlaying, playBpm) {
+    LaunchedEffect(isPlaying) { if (!isPlaying) beatInBar = -1 } // next start begins on beat 1
+    LaunchedEffect(timeSignature) { beatInBar = -1 }
+    LaunchedEffect(isPlaying, playBpm, timeSignature) {
         if (!isPlaying) return@LaunchedEffect
-        val interval = 60000.0 / playBpm
+        val interval = timeSignature.pulseMs(playBpm)
         val now = SystemClock.uptimeMillis()
         // Continue the pulse across tempo changes instead of restarting it
-        val first = if (lastBeatAt > 0 && lastBeatAt + interval > now) lastBeatAt + interval else now.toDouble()
+        val first = if (lastBeatAt > 0 && beatInBar >= 0 && lastBeatAt + interval > now) lastBeatAt + interval else now.toDouble()
         var n = 0
         while (true) {
             val at = (first + n * interval).toLong()
             delay(at - SystemClock.uptimeMillis())
             lastBeatAt = at
+            beatInBar = (beatInBar + 1) % timeSignature.pulsesPerBar
+            val accent = timeSignature.accents[beatInBar]
             beatTick++
-            if (clickVolume > 0f) audioManager.playClick(clickVolume) // the speaker toggle mutes only the held note
-            if (vibrationEnabled) hapticManager.tick()
+            if (clickVolume > 0f) audioManager.playClick(clickVolume, accent) // the speaker toggle mutes only the held note
+            if (vibrationEnabled) hapticManager.tick(accent)
             n++
         }
     }
@@ -269,20 +280,22 @@ fun RhythmPlayScreen(
     // otherwise on the note's own beats counted from the press (matching the ring's beat marks).
     fun startHoldHaptics(from: Long) {
         if (!vibrationEnabled) return
-        val interval = 60000.0 / playBpm
-        val horizon = from + (startTime + currentTargetMs - from).coerceAtLeast(0) + 260 + interval.toLong() * 2
-        val first = if (isPlaying && lastBeatAt > 0) lastBeatAt + interval else startTime + interval
-        val beats = generateSequence(first) { it + interval }
-            .map { it.toLong() }
-            .dropWhile { it < from - 70 }
-            .takeWhile { it < horizon }
-            .toList()
-        hapticManager.startHold(startTime, currentTargetMs, beats, interval, playFrom = from)
+        val interval = timeSignature.pulseMs(playBpm)
+        // Downbeat to count bars from: the current bar when the beat plays, else the press itself
+        val origin = if (isPlaying && lastBeatAt > 0 && beatInBar >= 0) lastBeatAt - beatInBar * interval
+            else startTime.toDouble()
+        val grid = BeatGrid(origin, interval, timeSignature.pulsesPerBar, timeSignature.accents)
+        hapticManager.startHold(startTime, currentTargetMs, grid, playFrom = from)
     }
 
     // Tempo changed during a hold (e.g. by sliding on the pad): the vibration follows the new tempo
-    LaunchedEffect(playBpm) {
+    LaunchedEffect(playBpm, timeSignature) {
         if (isHolding) startHoldHaptics(SystemClock.uptimeMillis())
+    }
+
+    // A note longer than the bar can't be picked: fall back to the longest one that fits
+    LaunchedEffect(timeSignature) {
+        if (!timeSignature.fits(freeNote)) freeNote = NoteLength.entries.last { timeSignature.fits(it) }
     }
 
     // Hold display: per frame so the ring fills smoothly
@@ -382,6 +395,7 @@ fun RhythmPlayScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f)
                 )
+                TimeSignaturePicker(timeSignature, onSelect = { settings.timeSignature = it })
                 if (isPlaying && clickVolume < 1f) {
                     Text(
                         if (clickVolume <= 0f) stringResource(R.string.beat_off)
@@ -428,7 +442,7 @@ fun RhythmPlayScreen(
                         onChange = onLessonChange
                     )
                 } else {
-                    NoteValuePicker(selected = freeNote, onSelect = { freeNote = it; lastResult = null; history.clear() })
+                    NoteValuePicker(selected = freeNote, timeSignature = timeSignature, onSelect = { freeNote = it; lastResult = null; history.clear() })
                 }
             }
 
@@ -463,7 +477,7 @@ fun RhythmPlayScreen(
                                 lastInteractionAt = pressedAt
                                 pressSolo = !isPlaying || clickVolume == 0f // beat stopped, or faded out
                                 pressOnsetError = if (isPlaying && lastBeatAt > 0) {
-                                    val interval = 60000f / playBpm
+                                    val interval = timeSignature.pulseMs(playBpm).toFloat()
                                     val phase = ((pressedAt - lastBeatAt) % interval) / interval
                                     min(phase, 1f - phase)
                                 } else 1f
@@ -553,8 +567,9 @@ fun RhythmPlayScreen(
                             .size(262.dp)
                             .graphicsLayer {
                                 val p = ripple.value
-                                scaleX = 1f + 0.12f * p
-                                scaleY = 1f + 0.12f * p
+                                val reach = if (beatInBar == 0) 0.2f else 0.12f // beat 1 ripples further
+                                scaleX = 1f + reach * p
+                                scaleY = 1f + reach * p
                                 alpha = (1f - p) * 0.8f
                             }
                             .border(width = 3.dp, color = RingBlue, shape = CircleShape)
@@ -606,6 +621,7 @@ fun RhythmPlayScreen(
                         },
                     contentAlignment = Alignment.Center
                 ) {
+                    if (isPlaying) BarDots(timeSignature, beatInBar, Modifier.align(Alignment.BottomCenter).padding(bottom = 34.dp))
                     PadLabel(
                         text = when {
                             isHolding && inWindow -> stringResource(R.string.release_now)
@@ -720,7 +736,7 @@ private fun TransportRow(
 }
 
 @Composable
-private fun NoteValuePicker(selected: NoteLength, onSelect: (NoteLength) -> Unit) {
+private fun NoteValuePicker(selected: NoteLength, timeSignature: TimeSignature, onSelect: (NoteLength) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             stringResource(R.string.hold_note_label),
@@ -728,7 +744,7 @@ private fun NoteValuePicker(selected: NoteLength, onSelect: (NoteLength) -> Unit
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(end = 8.dp)
         )
-        NoteLength.entries.forEach { note ->
+        NoteLength.entries.filter { timeSignature.fits(it) }.forEach { note ->
             val isSelected = note == selected
             val name = stringResource(note.nameRes)
             Box(
@@ -904,5 +920,47 @@ private fun TimingHistory(history: List<HoldResult>, modifier: Modifier = Modifi
         // Tiny axis hints at the start edge
         Text(longLabel, fontSize = 9.sp, color = Color.White.copy(alpha = 0.35f), modifier = Modifier.align(Alignment.TopStart))
         Text(shortLabel, fontSize = 9.sp, color = Color.White.copy(alpha = 0.35f), modifier = Modifier.align(Alignment.BottomStart))
+    }
+}
+
+/** "4/4"-style chip; tap to choose the time signature. */
+@Composable
+private fun TimeSignaturePicker(selected: TimeSignature, onSelect: (TimeSignature) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val label = stringResource(R.string.cd_time_signature)
+    Box(Modifier.padding(horizontal = 8.dp)) {
+        Text(
+            selected.label,
+            fontSize = 15.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                .clickable { open = true }
+                .semantics { contentDescription = label }
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            TimeSignature.entries.forEach { ts ->
+                DropdownMenuItem(
+                    text = { Text(ts.label, fontSize = 18.sp, color = if (ts == selected) MaterialTheme.colorScheme.primary else Color.Unspecified) },
+                    onClick = { open = false; onSelect(ts) }
+                )
+            }
+        }
+    }
+}
+
+/** One dot per pulse of the bar; the current one lights up, beat 1 is bigger. */
+@Composable
+private fun BarDots(timeSignature: TimeSignature, current: Int, modifier: Modifier = Modifier) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        repeat(timeSignature.pulsesPerBar) { i ->
+            val accent = timeSignature.accents[i]
+            Box(
+                Modifier
+                    .size(if (accent == 2) 12.dp else if (accent == 1) 10.dp else 8.dp)
+                    .background(Color.White.copy(alpha = if (i == current) 1f else 0.3f), CircleShape)
+            )
+        }
     }
 }

@@ -18,6 +18,7 @@ enum class NoteLength(val beats: Float, @StringRes val nameRes: Int) {
     QUARTER(1f, R.string.note_quarter),
     DOTTED_QUARTER(1.5f, R.string.note_dotted_quarter),
     HALF(2f, R.string.note_half),
+    DOTTED_HALF(3f, R.string.note_dotted_half),
     WHOLE(4f, R.string.note_whole);
 
     fun durationMs(bpm: Int): Long = (beats * 60000f / bpm).toLong()

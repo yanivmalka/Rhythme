@@ -110,4 +110,6 @@
     <string name="tip_short">ההחזקות שלך נוטות להיות קצרות. החזיקו מעט יותר.</string>
     <string name="history_long">ארוך</string>
     <string name="history_short">קצר</string>
+    <string name="cd_time_signature">משקל</string>
+    <string name="note_dotted_half">חצי עם נקודה</string>
 </resources>

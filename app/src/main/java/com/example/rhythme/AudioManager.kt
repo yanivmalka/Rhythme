@@ -43,11 +43,13 @@ class AudioManager {
     @Volatile private var running = false
     private var thread: Thread? = null
 
-    // 40ms 1kHz click with fast exponential decay
-    private val click = FloatArray(sampleRate * 40 / 1000) { i ->
+    // 40 ms clicks with fast exponential decay: normal, medium accent, strong accent (beat 1)
+    private fun makeClick(hz: Double, level: Double) = FloatArray(sampleRate * 40 / 1000) { i ->
         val t = i.toDouble() / sampleRate
-        (sin(2 * PI * 1000.0 * t) * exp(-t * 90) * 0.45).toFloat()
+        (sin(2 * PI * hz * t) * exp(-t * 90) * level).toFloat()
     }
+    private val clicks = arrayOf(makeClick(1000.0, 0.45), makeClick(1250.0, 0.5), makeClick(1600.0, 0.6))
+    @Volatile private var clickAccent = 0
 
     @Synchronized
     fun start() {
@@ -76,8 +78,10 @@ class AudioManager {
         toneOn = false
     }
 
-    fun playClick(volume: Float = 1f) {
+    /** [accent]: 0 normal, 1 medium, 2 strong (first beat of the bar). */
+    fun playClick(volume: Float = 1f, accent: Int = 0) {
         clickVolume = volume.coerceIn(0f, 1f)
+        clickAccent = accent.coerceIn(0, 2)
         clickRequested.set(true)
     }
 
@@ -122,12 +126,13 @@ class AudioManager {
         var gain = 0f
         var wasOn = false
         var toneSamples = 0 // since the current note started (piano envelope)
+        var click = clicks[0]
         var clickPos = click.size
         var chime: FloatArray? = null
         var chimePos = 0
 
         while (running) {
-            if (clickRequested.getAndSet(false)) clickPos = 0
+            if (clickRequested.getAndSet(false)) { click = clicks[clickAccent]; clickPos = 0 }
             chimeRequested.getAndSet(null)?.let { chime = it; chimePos = 0 }
             val phaseStep = 2.0 * PI * frequency / sampleRate
             val clickGain = clickVolume
