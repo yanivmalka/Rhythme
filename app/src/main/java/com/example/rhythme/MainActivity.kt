@@ -42,6 +42,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.rhythme.ui.theme.MyApplicationTheme
@@ -212,15 +215,16 @@ fun RhythmPlayScreen(
             ) {
                 Icon(
                     imageVector = if (soundEnabled) Icons.Filled.VolumeMute else Icons.Filled.VolumeOff,
-                    contentDescription = "Sound toggle",
+                    contentDescription = stringResource(R.string.cd_sound_toggle),
                     tint = if (soundEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.size(24.dp)
                 )
             }
 
+            val vibrationLabel = stringResource(R.string.cd_vibration_toggle)
             IconButton(
                 onClick = { vibrationEnabled = !vibrationEnabled },
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier.size(40.dp).semantics { contentDescription = vibrationLabel }
             ) {
                 Text("⚡", fontSize = 20.sp)
             }
@@ -231,15 +235,16 @@ fun RhythmPlayScreen(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Lightbulb,
-                    contentDescription = "Light toggle",
+                    contentDescription = stringResource(R.string.cd_light_toggle),
                     tint = if (lightEnabled) Color.Yellow else MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.size(24.dp)
                 )
             }
 
+            val beatLabel = stringResource(R.string.cd_beat_toggle)
             IconButton(
                 onClick = { beatEnabled = !beatEnabled },
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier.size(40.dp).semantics { contentDescription = beatLabel }
             ) {
                 Text("♪", fontSize = 20.sp, color = if (beatEnabled) Color.Green else MaterialTheme.colorScheme.surfaceVariant)
             }
@@ -250,7 +255,7 @@ fun RhythmPlayScreen(
             ) {
                 Icon(
                     imageVector = Icons.Filled.School,
-                    contentDescription = "Lessons",
+                    contentDescription = stringResource(R.string.cd_lessons),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp)
                 )
@@ -265,7 +270,7 @@ fun RhythmPlayScreen(
                 .height(60.dp)
                 .alpha(if (beatEnabled) 1f else 0.3f)
         ) {
-            Text("BPM: ${bpm.toInt()}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.bpm_label, bpm.toInt()), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Slider(
                 value = bpm,
                 onValueChange = { if (beatEnabled) bpm = it },
@@ -283,11 +288,11 @@ fun RhythmPlayScreen(
                 .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
             currentLesson?.let { l ->
-                Text(l.title, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
-                val status = if (lessonProgress?.isMastered == true) "Mastered ✓"
-                    else "Streak ${lessonProgress?.streak ?: 0}/3"
+                Text(stringResource(l.titleRes), fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
+                val status = if (lessonProgress?.isMastered == true) stringResource(R.string.lesson_mastered)
+                    else stringResource(R.string.lesson_streak, lessonProgress?.streak ?: 0)
                 Text(
-                    "Target: hold ${String.format("%.2f", targetMsFor(l) / 1000.0)}s  ·  $status",
+                    stringResource(R.string.lesson_target, targetMsFor(l) / 1000.0) + "  ·  " + status,
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -367,12 +372,12 @@ fun RhythmPlayScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = if (isHolding) "Hold..." else "Press & Hold",
+                        text = stringResource(if (isHolding) R.string.holding else R.string.press_and_hold),
                         color = Color.White,
                         fontSize = 20.sp
                     )
                     Text(
-                        text = String.format("%.1f", holdDurationMs / 1000.0) + "s",
+                        text = stringResource(R.string.seconds_1dp, holdDurationMs / 1000.0),
                         color = Color.White,
                         fontSize = 28.sp,
                         modifier = Modifier.padding(top = 8.dp)
@@ -388,9 +393,9 @@ fun RhythmPlayScreen(
         val result = lastResult
         Text(
             text = when {
-                currentLesson == null -> "Hold to play. Listen to the beat."
-                result == null -> "Hold for the target time, then release."
-                else -> "You held ${String.format("%.2f", result.first / 1000.0)}s  ·  ${(result.second * 100).toInt()}%"
+                currentLesson == null -> stringResource(R.string.hint_free_play)
+                result == null -> stringResource(R.string.hint_lesson)
+                else -> stringResource(R.string.lesson_result, result.first / 1000.0, (result.second * 100).toInt())
             },
             fontSize = 14.sp,
             color = when {

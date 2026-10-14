@@ -1,0 +1,37 @@
+<resources>
+    <!-- Play screen -->
+    <string name="cd_sound_toggle">הפעלת/השתקת צליל</string>
+    <string name="cd_vibration_toggle">הפעלת/כיבוי רטט</string>
+    <string name="cd_light_toggle">הפעלת/כיבוי אור</string>
+    <string name="cd_beat_toggle">הפעלת/כיבוי פעמה</string>
+    <string name="cd_lessons">שיעורים</string>
+    <string name="bpm_label">קצב: %1$d BPM</string>
+    <string name="press_and_hold">לחצו והחזיקו</string>
+    <string name="holding">מחזיקים…</string>
+    <string name="seconds_1dp">%1$.1f שנ׳</string>
+    <string name="hint_free_play">החזיקו כדי לנגן. הקשיבו לפעמה.</string>
+    <string name="hint_lesson">החזיקו למשך זמן היעד, ואז שחררו.</string>
+    <string name="lesson_target">יעד: להחזיק %1$.2f שנ׳</string>
+    <string name="lesson_streak">רצף %1$d/3</string>
+    <string name="lesson_mastered">הושלם ✓</string>
+    <string name="lesson_result">החזקת %1$.2f שנ׳ · %2$d%%</string>
+
+    <!-- Lessons screen -->
+    <string name="lessons_title">שיעורי קצב</string>
+    <string name="cd_back">חזרה</string>
+    <string name="mastered">הושלם</string>
+
+    <!-- Lesson curriculum -->
+    <string name="lesson_steady_beat_title">פעמה קבועה</string>
+    <string name="lesson_steady_beat_desc">הרגישו את הפעמה הקבועה. פשוט הקישו יחד איתה.</string>
+    <string name="lesson_quarter_title">רבעים</string>
+    <string name="lesson_quarter_desc">החזיקו רבע (חצי שנייה בקצב 120 BPM).</string>
+    <string name="lesson_half_title">חצאים</string>
+    <string name="lesson_half_desc">החזיקו חצי (שנייה שלמה).</string>
+    <string name="lesson_whole_title">שלמים</string>
+    <string name="lesson_whole_desc">החזיקו שתי שניות שלמות.</string>
+    <string name="lesson_dotted_quarter_title">רבעים עם נקודה</string>
+    <string name="lesson_dotted_quarter_desc">החזיקו 0.75 שנייה (רבע ועוד שמינית).</string>
+    <string name="lesson_eighth_title">שמיניות</string>
+    <string name="lesson_eighth_desc">החזיקו רבע שנייה (מהירות כפולה).</string>
+</resources>

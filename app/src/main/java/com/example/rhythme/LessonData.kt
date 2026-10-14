@@ -1,9 +1,11 @@
 package com.example.rhythme
 
+import androidx.annotation.StringRes
+
 data class Lesson(
     val id: Int,
-    val title: String,
-    val description: String,
+    @StringRes val titleRes: Int,
+    @StringRes val descriptionRes: Int,
     val targetBpm: Int,
     val targetNoteLength: NoteLength,
     val order: Int
@@ -31,48 +33,48 @@ object LessonCurriculum {
     val lessons = listOf(
         Lesson(
             id = 1,
-            title = "Steady Beat",
-            description = "Feel the constant beat. Just tap along.",
+            titleRes = R.string.lesson_steady_beat_title,
+            descriptionRes = R.string.lesson_steady_beat_desc,
             targetBpm = 120,
             targetNoteLength = NoteLength.QUARTER,
             order = 1
         ),
         Lesson(
             id = 2,
-            title = "Quarter Notes",
-            description = "Hold for a quarter note (half second at 120 BPM)",
+            titleRes = R.string.lesson_quarter_title,
+            descriptionRes = R.string.lesson_quarter_desc,
             targetBpm = 120,
             targetNoteLength = NoteLength.QUARTER,
             order = 2
         ),
         Lesson(
             id = 3,
-            title = "Half Notes",
-            description = "Hold for a half note (one full second)",
+            titleRes = R.string.lesson_half_title,
+            descriptionRes = R.string.lesson_half_desc,
             targetBpm = 120,
             targetNoteLength = NoteLength.HALF,
             order = 3
         ),
         Lesson(
             id = 4,
-            title = "Whole Notes",
-            description = "Hold for two full seconds",
+            titleRes = R.string.lesson_whole_title,
+            descriptionRes = R.string.lesson_whole_desc,
             targetBpm = 120,
             targetNoteLength = NoteLength.WHOLE,
             order = 4
         ),
         Lesson(
             id = 5,
-            title = "Dotted Quarters",
-            description = "Hold for 0.75 seconds (three-quarter rhythm)",
+            titleRes = R.string.lesson_dotted_quarter_title,
+            descriptionRes = R.string.lesson_dotted_quarter_desc,
             targetBpm = 120,
             targetNoteLength = NoteLength.DOTTED_QUARTER,
             order = 5
         ),
         Lesson(
             id = 6,
-            title = "Eighth Notes",
-            description = "Hold for a quarter second (double speed)",
+            titleRes = R.string.lesson_eighth_title,
+            descriptionRes = R.string.lesson_eighth_desc,
             targetBpm = 120,
             targetNoteLength = NoteLength.EIGHTH,
             order = 6

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Languages offered in Settings > Apps > Rhythme > Language (Android 13+).
+     To add a language: add res/values-<code>/strings.xml and a line here. -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="iw" />
+</locale-config>

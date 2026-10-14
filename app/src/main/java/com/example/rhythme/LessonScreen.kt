@@ -7,12 +7,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -41,10 +43,10 @@ fun LessonScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
             }
             Text(
-                "Rhythm Lessons",
+                stringResource(R.string.lessons_title),
                 fontSize = 24.sp,
                 modifier = Modifier.weight(1f)
             )
@@ -95,12 +97,12 @@ fun LessonCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = lesson.title,
+                        text = stringResource(lesson.titleRes),
                         fontSize = 18.sp,
                         color = Color.White
                     )
                     Text(
-                        text = lesson.description,
+                        text = stringResource(lesson.descriptionRes),
                         fontSize = 12.sp,
                         color = Color.White.copy(alpha = 0.8f)
                     )
@@ -112,7 +114,7 @@ fun LessonCard(
                 ) {
                     if (progress.isMastered) {
                         Text("⭐", fontSize = 28.sp)
-                        Text("Mastered", fontSize = 10.sp, color = Color.White)
+                        Text(stringResource(R.string.mastered), fontSize = 10.sp, color = Color.White)
                     } else if (progress.attempts > 0) {
                         Text(
                             "${(progress.bestAccuracy * 100).toInt()}%",
@@ -121,7 +123,7 @@ fun LessonCard(
                         )
                         Text("${progress.streak}/3", fontSize = 10.sp, color = Color.White)
                     } else {
-                        Text("→", fontSize = 24.sp, color = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White)
                     }
                 }
             }
