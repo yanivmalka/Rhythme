@@ -47,45 +47,74 @@ class HapticManager(context: Context) {
 
     /**
      * Plays a whole hold as one waveform, so timing doesn't depend on the UI thread:
-     * a buzz throughout, a gap with a firm tick at each beat, and a double-buzz release
-     * pulse at the target. All times are SystemClock.uptimeMillis().
+     * a buzz with a gap + firm tick at each beat, a double-buzz release pulse at the target,
+     * a short silence, then a loop that keeps buzzing (with beat ticks) for as long as the
+     * hold lasts. All times are SystemClock.uptimeMillis(); [beatIntervalMs] is null when the
+     * beat isn't playing.
      */
-    fun startHold(startAt: Long, targetMs: Long, beatTimes: List<Long>) {
+    fun startHold(startAt: Long, targetMs: Long, beatTimes: List<Long>, beatIntervalMs: Double?) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val step = 10L
-        val horizon = (targetMs * 2 + 1500).coerceAtMost(15_000)
-        val grid = IntArray((horizon / step).toInt()) { i ->
-            40 + (80 * (i * step).toFloat() / targetMs).toInt().coerceAtMost(80) // swelling buzz
+        val t = targetMs
+        val afterPulse = t + 260 // release pulse plus a short silence
+
+        // The loop starts at the first beat gap after the pulse (or right after it without a beat)
+        val loopStart = if (beatIntervalMs != null) {
+            beatTimes.map { it - startAt - BEAT_GAP_BEFORE }.firstOrNull { it >= afterPulse } ?: afterPulse
+        } else afterPulse
+
+        // Part 1, played once: swelling buzz, beat gaps + ticks, release pulse
+        val grid = IntArray(((loopStart + step - 1) / step).toInt()) { i ->
+            40 + (80 * (i * step).toFloat() / targetMs).toInt().coerceAtMost(80)
         }
         fun set(from: Long, to: Long, amplitude: Int) {
+            if (grid.isEmpty()) return
             for (i in (from / step).coerceAtLeast(0)..((to - 1) / step).coerceAtMost(grid.size - 1L)) {
                 grid[i.toInt()] = amplitude
             }
         }
         for (beat in beatTimes) {
             val at = beat - startAt
-            set(at - 90, at + 70, 0)  // gap around the beat...
-            set(at, at + 25, 255)     // ...with the tick in it
+            set(at - BEAT_GAP_BEFORE, at + BEAT_GAP_AFTER, 0) // gap around the beat...
+            set(at, at + TICK_MS, 255)                        // ...with the tick in it
         }
-        val t = targetMs // release pulse: gap, buzz, gap, buzz, gap
-        set(t - 60, t + 260, 0)
+        set(t - 60, afterPulse, 0) // pulse: gap, buzz, gap, buzz, silence
         set(t, t + 60, 255)
         set(t + 130, t + 190, 255)
 
-        // Run-length encode the grid into waveform segments
+        // Part 2, repeated until release: one beat of buzz with its gap + tick (or plain buzz)
+        val loop = if (beatIntervalMs != null) {
+            val period = beatIntervalMs.toLong().coerceAtLeast(BEAT_GAP_BEFORE + BEAT_GAP_AFTER + step)
+            IntArray((period / step).toInt()) { i ->
+                val ms = i * step
+                when {
+                    ms in BEAT_GAP_BEFORE until BEAT_GAP_BEFORE + TICK_MS -> 255 // the beat tick
+                    ms < BEAT_GAP_BEFORE + BEAT_GAP_AFTER -> 0                   // gap around it
+                    else -> 120
+                }
+            }
+        } else IntArray(50) { 120 } // 500 ms of steady buzz
+
         val timings = mutableListOf<Long>()
         val amplitudes = mutableListOf<Int>()
-        for (a in grid) {
-            if (amplitudes.isNotEmpty() && amplitudes.last() == a) timings[timings.lastIndex] += step
-            else { timings += step; amplitudes += a }
+        fun encode(part: IntArray) { // run-length encode, never merging across the two parts
+            var first = true
+            for (a in part) {
+                if (!first && amplitudes.last() == a) timings[timings.lastIndex] += step
+                else { timings += step; amplitudes += a }
+                first = false
+            }
         }
+        encode(grid)
+        val repeatFrom = timings.size
+        encode(loop)
 
         pulseFrom = startAt + t
         pulseUntil = startAt + t + 190
         holdActive = true
         holdGeneration++
         vibrator.cancel()
-        vibrator.vibrate(VibrationEffect.createWaveform(timings.toLongArray(), amplitudes.toIntArray(), -1))
+        vibrator.vibrate(VibrationEffect.createWaveform(timings.toLongArray(), amplitudes.toIntArray(), repeatFrom))
     }
 
     /**
@@ -110,6 +139,12 @@ class HapticManager(context: Context) {
         holdActive = false
         vibrator.cancel()
         vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 40, 70, 40, 70, 40, 90, 220), -1))
+    }
+
+    private companion object {
+        const val BEAT_GAP_BEFORE = 90L
+        const val BEAT_GAP_AFTER = 70L
+        const val TICK_MS = 25L
     }
 
     fun stop() {

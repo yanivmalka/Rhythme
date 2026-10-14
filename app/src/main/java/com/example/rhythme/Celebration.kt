@@ -12,8 +12,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -71,7 +69,7 @@ fun StarsRow(stars: Int, size: Dp = 16.dp, modifier: Modifier = Modifier) {
 
 /**
  * Full-screen "wow" when a star is earned: stars spring in one by one over a slowly
- * turning sunburst, with a burst of gold sparks. Dismisses itself, or on tap.
+ * turning sunburst, with a burst of gold sparks. Dismisses itself; never blocks practice.
  */
 @Composable
 fun StarCelebration(stars: Int, onDone: () -> Unit) {
@@ -108,8 +106,7 @@ fun StarCelebration(stars: Int, onDone: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .alpha(fade.value)
-            .background(Color.Black.copy(alpha = 0.6f))
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { done() },
+            .background(Color.Black.copy(alpha = 0.25f)), // light, and no input handling: touches reach the pad
         contentAlignment = Alignment.Center
     ) {
         Canvas(Modifier.fillMaxSize()) {

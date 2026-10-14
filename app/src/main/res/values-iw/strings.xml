@@ -86,7 +86,7 @@
     <string name="cd_menu">תפריט</string>
     <string name="menu_profile">פרופיל</string>
     <string name="menu_language">שפה</string>
-    <string name="menu_instrument">כלי נגינה</string>
+    <string name="menu_instrument">כלי ותו</string>
     <string name="menu_about">אודות</string>
     <string name="profile_guest">אורח</string>
     <string name="profile_name_label">השם שלך</string>
@@ -104,4 +104,5 @@
     <string name="instrument_piano">פסנתר</string>
     <string name="about_version">גרסה %1$s</string>
     <string name="about_text">Rhythme מלמדת קצב דרך התחושה. החזיקו את המשטח למשך אורך התו, הקשיבו לפעמה, ותנו לה לדעוך עד שתשמרו על הקצב בעצמכם.</string>
+    <string name="note_pitch_title">תו</string>
 </resources>

@@ -70,7 +70,7 @@
     <!-- Stars and lesson progress -->
     <string name="star_next_1">Next ★: 3 in a row at 80%+</string>
     <string name="star_next_2">Next ★★: 3 in a row at 90%+</string>
-    <string name="star_next_3">Next ★★★: 3 in a row at 90%+ with the beat off</string>
+    <string name="star_next_3">Next ★★★: 3 in a row at 90%+ with no beat</string>
     <string name="stars_all">All 3 stars!</string>
     <string name="star_earned_1">Star earned!</string>
     <string name="star_earned_2">Second star!</string>
@@ -88,7 +88,7 @@
     <string name="cd_menu">Menu</string>
     <string name="menu_profile">Profile</string>
     <string name="menu_language">Language</string>
-    <string name="menu_instrument">Instrument</string>
+    <string name="menu_instrument">Instrument &amp; note</string>
     <string name="menu_about">About</string>
     <string name="profile_guest">Guest</string>
     <string name="profile_name_label">Your name</string>
@@ -108,4 +108,5 @@
     <string name="instrument_piano">Piano</string>
     <string name="about_version">Version %1$s</string>
     <string name="about_text">Rhythme teaches rhythm by feel. Hold the pad for the length of the note, listen to the beat, and let the beat fade until you keep the rhythm yourself.</string>
+    <string name="note_pitch_title">Note</string>
 </resources>

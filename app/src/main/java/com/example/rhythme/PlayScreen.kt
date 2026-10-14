@@ -41,8 +41,6 @@ import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,7 +73,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -91,8 +88,8 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 // Pitches for the hold tone: C4 major scale up to C5 (names in R.array.pitch_names)
-private val PITCHES_HZ = doubleArrayOf(261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25)
-private const val DEFAULT_PITCH = 5 // A4
+internal val PITCHES_HZ = doubleArrayOf(261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25)
+internal const val DEFAULT_PITCH = 5 // A4
 
 private const val GOOD_WINDOW = 0.13f      // +/-13% of target = the 80% accuracy bar in ProgressManager
 private const val ONSET_TOLERANCE = 0.2f   // press within 20% of a beat counts as "on the beat"
@@ -170,7 +167,7 @@ fun RhythmPlayScreen(
     var holdDurationMs by remember { mutableLongStateOf(0L) }
     var lastProgress by remember { mutableFloatStateOf(0f) }
     var pressOnsetError by remember { mutableFloatStateOf(1f) }
-    var pressSolo by remember { mutableStateOf(false) } // beat faded off at press: counts toward ★★★
+    var pressSolo by remember { mutableStateOf(false) } // no audible beat at press: counts toward ★★★
 
     // "Press & Hold" hint
     var hintVisible by remember { mutableStateOf(true) }
@@ -334,22 +331,6 @@ fun RhythmPlayScreen(
                     )
                 }
 
-                PitchPicker(
-                    selected = pitchIndex,
-                    muted = !soundEnabled,
-                    onSelect = { i ->
-                        pitchIndex = i
-                        audioManager.frequency = PITCHES_HZ[i]
-                        if (soundEnabled && !isHolding) {
-                            scope.launch { // short preview of the new pitch
-                                audioManager.startTone(0.3f)
-                                delay(250)
-                                if (!isHolding) audioManager.stopTone()
-                            }
-                        }
-                    }
-                )
-
                 IconButton(onClick = onOpenLessons, modifier = Modifier.size(40.dp)) {
                     Icon(
                         imageVector = Icons.Filled.School,
@@ -452,7 +433,7 @@ fun RhythmPlayScreen(
                                 startTime = pressedAt
                                 holdDurationMs = 0
                                 lastInteractionAt = pressedAt
-                                pressSolo = isPlaying && clickVolume == 0f
+                                pressSolo = !isPlaying || clickVolume == 0f // beat stopped, or faded out
                                 pressOnsetError = if (isPlaying && lastBeatAt > 0) {
                                     val interval = 60000f / playBpm
                                     val phase = ((pressedAt - lastBeatAt) % interval) / interval
@@ -461,16 +442,16 @@ fun RhythmPlayScreen(
                                 if (soundEnabled) audioManager.startTone(0.3f)
                                 if (vibrationEnabled) {
                                     // Whole-hold vibration: buzz, a gap + tick at each upcoming beat, release pulse
-                                    val beats = if (isPlaying && lastBeatAt > 0) {
-                                        val interval = 60000.0 / playBpm
-                                        val horizon = pressedAt + currentTargetMs * 2 + 1500
+                                    val interval = if (isPlaying && lastBeatAt > 0) 60000.0 / playBpm else null
+                                    val beats = if (interval != null) {
+                                        val horizon = pressedAt + currentTargetMs + 260 + interval.toLong() * 2
                                         generateSequence(lastBeatAt + interval) { it + interval }
                                             .map { it.toLong() }
                                             .dropWhile { it < pressedAt - 70 }
                                             .takeWhile { it < horizon }
                                             .toList()
                                     } else emptyList()
-                                    hapticManager.startHold(pressedAt, currentTargetMs, beats)
+                                    hapticManager.startHold(pressedAt, currentTargetMs, beats, interval)
                                 }
 
                                 val up = waitForUpOrCancellation()
@@ -671,32 +652,6 @@ private fun TransportRow(
         IconButton(onClick = onNextMark) {
             Icon(Icons.Filled.FastForward, stringResource(R.string.cd_tempo_next), tint = tint,
                 modifier = Modifier.graphicsLayer { scaleX = mirror })
-        }
-    }
-}
-
-@Composable
-private fun PitchPicker(selected: Int, muted: Boolean, onSelect: (Int) -> Unit) {
-    val names = stringArrayResource(R.array.pitch_names)
-    var open by remember { mutableStateOf(false) }
-    val label = stringResource(R.string.cd_pitch)
-    Box {
-        IconButton(
-            onClick = { open = true },
-            modifier = Modifier.size(48.dp).semantics { contentDescription = label }
-        ) {
-            Text("♪" + names[selected], fontSize = 16.sp, color = Color.Green.copy(alpha = if (muted) 0.35f else 1f))
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            names.forEachIndexed { i, name ->
-                DropdownMenuItem(
-                    text = { Text(name, color = if (i == selected) Color.Green else Color.Unspecified) },
-                    onClick = {
-                        open = false
-                        onSelect(i)
-                    }
-                )
-            }
         }
     }
 }

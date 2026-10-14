@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -153,9 +154,21 @@ fun LanguageScreen(onBack: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
+    var previewJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    fun preview() { // short preview of the current instrument and note
+        audioManager.instrument = settings.instrument
+        audioManager.frequency = PITCHES_HZ[settings.pitchIndex]
+        previewJob?.cancel()
+        previewJob = scope.launch {
+            audioManager.startTone(0.35f)
+            delay(700)
+            audioManager.stopTone()
+        }
+    }
     MenuPage(R.string.menu_instrument, onBack) {
         Text(
             stringResource(R.string.instrument_hint),
@@ -166,12 +179,27 @@ fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, onBack:
         Instrument.entries.forEach { instrument ->
             ChoiceRow(stringResource(instrument.nameRes), settings.instrument == instrument) {
                 settings.instrument = instrument
-                audioManager.instrument = instrument
-                scope.launch { // short preview at the chosen pitch
-                    audioManager.startTone(0.35f)
-                    delay(700)
-                    audioManager.stopTone()
-                }
+                preview()
+            }
+        }
+
+        // The note (pitch) the instrument plays while holding
+        Text(
+            stringResource(R.string.note_pitch_title),
+            fontSize = 20.sp,
+            modifier = Modifier.padding(top = 28.dp, bottom = 12.dp)
+        )
+        val names = stringArrayResource(R.array.pitch_names)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            names.forEachIndexed { i, name ->
+                FilterChip(
+                    selected = settings.pitchIndex == i,
+                    onClick = {
+                        settings.pitchIndex = i
+                        preview()
+                    },
+                    label = { Text(name, fontSize = 18.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)) }
+                )
             }
         }
     }
