@@ -2,6 +2,7 @@ package com.example.rhythme
 
 import android.content.Context
 import android.os.Build
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -26,6 +27,27 @@ class HapticManager(context: Context) {
             val effect = VibrationEffect.createOneShot(durationMs, safeAmplitude)
             vibrator.cancel()
             vibrator.vibrate(effect)
+        }
+    }
+
+    /** False on on/off-only motors (e.g. Galaxy A24): every vibration is full strength there. */
+    val hasAmplitudeControl: Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vibrator.hasAmplitudeControl()
+
+    private var pulseUntil = 0L
+
+    /** Short, firm tap on each beat. Skipped while a release pulse plays (they often coincide). */
+    fun tick() {
+        if (SystemClock.uptimeMillis() < pulseUntil) return
+        vibrate(25, 200)
+    }
+
+    /** Double buzz: the hold has reached its target, time to release. Feels distinct from a beat tick. */
+    fun pulse() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            pulseUntil = SystemClock.uptimeMillis() + 190
+            vibrator.cancel()
+            vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 60, 70, 60), -1))
         }
     }
 

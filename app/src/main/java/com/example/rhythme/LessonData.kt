@@ -11,12 +11,15 @@ data class Lesson(
     val order: Int
 )
 
-enum class NoteLength(val durationMs: Long) {
-    QUARTER(500),      // 0.5s at 120 BPM
-    EIGHTH(250),       // 0.25s at 120 BPM
-    HALF(1000),        // 1s at 120 BPM
-    WHOLE(2000),       // 2s at 120 BPM
-    DOTTED_QUARTER(750) // 0.75s (1.5x quarter)
+/** Note values measured in beats (a quarter note = one beat), so targets follow the tempo. */
+enum class NoteLength(val beats: Float, @StringRes val nameRes: Int) {
+    EIGHTH(0.5f, R.string.note_eighth),
+    QUARTER(1f, R.string.note_quarter),
+    DOTTED_QUARTER(1.5f, R.string.note_dotted_quarter),
+    HALF(2f, R.string.note_half),
+    WHOLE(4f, R.string.note_whole);
+
+    fun durationMs(bpm: Int): Long = (beats * 60000f / bpm).toLong()
 }
 
 data class LessonProgress(
@@ -35,7 +38,7 @@ object LessonCurriculum {
             id = 1,
             titleRes = R.string.lesson_steady_beat_title,
             descriptionRes = R.string.lesson_steady_beat_desc,
-            targetBpm = 120,
+            targetBpm = 60,
             targetNoteLength = NoteLength.QUARTER,
             order = 1
         ),
@@ -43,7 +46,7 @@ object LessonCurriculum {
             id = 2,
             titleRes = R.string.lesson_quarter_title,
             descriptionRes = R.string.lesson_quarter_desc,
-            targetBpm = 120,
+            targetBpm = 60,
             targetNoteLength = NoteLength.QUARTER,
             order = 2
         ),
@@ -51,7 +54,7 @@ object LessonCurriculum {
             id = 3,
             titleRes = R.string.lesson_half_title,
             descriptionRes = R.string.lesson_half_desc,
-            targetBpm = 120,
+            targetBpm = 60,
             targetNoteLength = NoteLength.HALF,
             order = 3
         ),
@@ -59,7 +62,7 @@ object LessonCurriculum {
             id = 4,
             titleRes = R.string.lesson_whole_title,
             descriptionRes = R.string.lesson_whole_desc,
-            targetBpm = 120,
+            targetBpm = 60,
             targetNoteLength = NoteLength.WHOLE,
             order = 4
         ),
@@ -67,7 +70,7 @@ object LessonCurriculum {
             id = 5,
             titleRes = R.string.lesson_dotted_quarter_title,
             descriptionRes = R.string.lesson_dotted_quarter_desc,
-            targetBpm = 120,
+            targetBpm = 60,
             targetNoteLength = NoteLength.DOTTED_QUARTER,
             order = 5
         ),
@@ -75,7 +78,7 @@ object LessonCurriculum {
             id = 6,
             titleRes = R.string.lesson_eighth_title,
             descriptionRes = R.string.lesson_eighth_desc,
-            targetBpm = 120,
+            targetBpm = 60,
             targetNoteLength = NoteLength.EIGHTH,
             order = 6
         )

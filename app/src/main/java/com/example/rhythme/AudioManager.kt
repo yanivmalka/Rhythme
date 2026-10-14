@@ -17,12 +17,13 @@ import kotlin.math.sin
  */
 class AudioManager {
     private val sampleRate = 44100
-    private val frequency = 440.0 // A4 note
+    @Volatile var frequency = 440.0 // pitch of the hold tone (A4 by default)
     private val chunkSize = sampleRate / 100 // 10ms per write keeps latency low
 
     @Volatile private var toneOn = false
     @Volatile private var toneVolume = 0.3f
     private val clickRequested = AtomicBoolean(false)
+    @Volatile private var clickVolume = 1f
     @Volatile private var running = false
     private var thread: Thread? = null
 
@@ -59,7 +60,8 @@ class AudioManager {
         toneOn = false
     }
 
-    fun playClick() {
+    fun playClick(volume: Float = 1f) {
+        clickVolume = volume.coerceIn(0f, 1f)
         clickRequested.set(true)
     }
 
@@ -80,7 +82,6 @@ class AudioManager {
         track.play()
 
         val buffer = ShortArray(chunkSize)
-        val phaseStep = 2.0 * PI * frequency / sampleRate
         val rampStep = 1f / (sampleRate * 0.005f) // 5ms fade avoids clicks on start/stop
         var phase = 0.0
         var gain = 0f
@@ -88,13 +89,15 @@ class AudioManager {
 
         while (running) {
             if (clickRequested.getAndSet(false)) clickPos = 0
+            val phaseStep = 2.0 * PI * frequency / sampleRate
+            val clickGain = clickVolume
             val target = if (toneOn) toneVolume else 0f
             for (i in 0 until chunkSize) {
                 gain += (target - gain).coerceIn(-rampStep, rampStep)
                 var s = (sin(phase) * gain).toFloat()
                 phase += phaseStep
                 if (phase > 2.0 * PI) phase -= 2.0 * PI
-                if (clickPos < click.size) s += click[clickPos++]
+                if (clickPos < click.size) s += click[clickPos++] * clickGain
                 buffer[i] = (s.coerceIn(-1f, 1f) * Short.MAX_VALUE).toInt().toShort()
             }
             track.write(buffer, 0, chunkSize) // blocks, pacing the loop

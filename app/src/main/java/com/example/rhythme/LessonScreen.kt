@@ -95,6 +95,8 @@ fun LessonCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                NoteGlyph(lesson.targetNoteLength, Color.White, height = 40.dp)
+                Spacer(Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = stringResource(lesson.titleRes),

@@ -2,10 +2,9 @@
     <string name="app_name" translatable="false">Rhythme</string>
 
     <!-- Play screen -->
-    <string name="cd_sound_toggle">Sound on/off</string>
+    <string name="cd_sound_toggle">Note sound on/off</string>
     <string name="cd_vibration_toggle">Vibration on/off</string>
     <string name="cd_light_toggle">Light on/off</string>
-    <string name="cd_beat_toggle">Beat on/off</string>
     <string name="cd_lessons">Lessons</string>
     <string name="bpm_label">BPM: %1$d</string>
     <string name="press_and_hold">Press &amp; Hold</string>
@@ -27,13 +26,43 @@
     <string name="lesson_steady_beat_title">Steady Beat</string>
     <string name="lesson_steady_beat_desc">Feel the constant beat. Just tap along.</string>
     <string name="lesson_quarter_title">Quarter Notes</string>
-    <string name="lesson_quarter_desc">Hold for a quarter note (half a second at 120 BPM).</string>
+    <string name="lesson_quarter_desc">Hold for one beat.</string>
     <string name="lesson_half_title">Half Notes</string>
-    <string name="lesson_half_desc">Hold for a half note (one full second).</string>
+    <string name="lesson_half_desc">Hold for two beats.</string>
     <string name="lesson_whole_title">Whole Notes</string>
-    <string name="lesson_whole_desc">Hold for two full seconds.</string>
+    <string name="lesson_whole_desc">Hold for four beats, a whole bar.</string>
     <string name="lesson_dotted_quarter_title">Dotted Quarters</string>
-    <string name="lesson_dotted_quarter_desc">Hold for 0.75 seconds (a quarter plus an eighth).</string>
+    <string name="lesson_dotted_quarter_desc">Hold for one and a half beats.</string>
     <string name="lesson_eighth_title">Eighth Notes</string>
-    <string name="lesson_eighth_desc">Hold for a quarter second (double speed).</string>
+    <string name="lesson_eighth_desc">Hold for half a beat.</string>
+
+    <!-- Transport, tempo and practice -->
+    <string name="cd_play">Start beat</string>
+    <string name="cd_stop">Stop beat</string>
+    <string name="cd_tempo_prev">Previous tempo mark</string>
+    <string name="cd_tempo_next">Next tempo mark</string>
+    <string name="cd_tempo_minus">Slower</string>
+    <string name="cd_tempo_plus">Faster</string>
+    <string name="beat_level">Beat %1$d%%</string>
+    <string name="beat_off">Beat off. Keep it going!</string>
+    <string name="release_now">Release!</string>
+    <string name="cd_pitch">Tone pitch</string>
+    <string name="hold_note_label">Hold:</string>
+    <string-array name="pitch_names">
+        <item>C</item>
+        <item>D</item>
+        <item>E</item>
+        <item>F</item>
+        <item>G</item>
+        <item>A</item>
+        <item>B</item>
+        <item>C′</item>
+    </string-array>
+
+    <!-- Note values -->
+    <string name="note_eighth">Eighth note</string>
+    <string name="note_quarter">Quarter note</string>
+    <string name="note_dotted_quarter">Dotted quarter note</string>
+    <string name="note_half">Half note</string>
+    <string name="note_whole">Whole note</string>
 </resources>
