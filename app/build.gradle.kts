@@ -56,6 +56,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    // The release-time lint check crashes with this AGP on the CI JDK; Android Studio lint still works
+    lint {
+        checkReleaseBuilds = false
+    }
     buildFeatures {
         compose = true
         prefab = true
