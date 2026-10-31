@@ -123,4 +123,16 @@
     <string name="lesson_waltz_desc">In 3/4: hold the dotted half, one full bar.</string>
     <string name="lesson_six_eight_title">Six-Eight</string>
     <string name="lesson_six_eight_desc">In 6/8: hold the dotted quarter, three eighths.</string>
+
+    <!-- Updates -->
+    <string name="update_title">Updates</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_up_to_date">You have the latest version.</string>
+    <string name="update_available">A new version is ready (build %1$d).</string>
+    <string name="update_downloading">Downloading…</string>
+    <string name="update_ready">Build %1$d is downloaded. Tap Install. If Android asks, allow Rhythme to install apps and tap Install again.</string>
+    <string name="update_failed">Couldn\'t reach the update server. Check the internet connection and try again.</string>
+    <string name="update_install">Install</string>
+    <string name="update_later">Later</string>
 </resources>

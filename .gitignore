@@ -14,3 +14,7 @@
 .cxx
 local.properties
 .kotlin/
+
+# Signing key: never commit (CI reads it from repository secrets)
+*.keystore
+*.jks

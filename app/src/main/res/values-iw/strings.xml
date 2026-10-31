@@ -119,4 +119,16 @@
     <string name="lesson_waltz_desc">במשקל 3/4: החזיקו חצי עם נקודה, תיבה שלמה.</string>
     <string name="lesson_six_eight_title">שש־שמיניות</string>
     <string name="lesson_six_eight_desc">במשקל 6/8: החזיקו רבע עם נקודה, שלוש שמיניות.</string>
+
+    <!-- Updates -->
+    <string name="update_title">עדכונים</string>
+    <string name="update_check">בדיקת עדכונים</string>
+    <string name="update_checking">בודק…</string>
+    <string name="update_up_to_date">מותקנת הגרסה האחרונה.</string>
+    <string name="update_available">גרסה חדשה מוכנה (בנייה %1$d).</string>
+    <string name="update_downloading">מוריד…</string>
+    <string name="update_ready">בנייה %1$d הורדה. הקישו התקנה. אם Android מבקש, אשרו ל־Rhythme להתקין אפליקציות והקישו התקנה שוב.</string>
+    <string name="update_failed">לא ניתן להגיע לשרת העדכונים. בדקו את החיבור לאינטרנט ונסו שוב.</string>
+    <string name="update_install">התקנה</string>
+    <string name="update_later">אחר כך</string>
 </resources>

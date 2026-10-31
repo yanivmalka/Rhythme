@@ -206,7 +206,7 @@ fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, onBack:
 }
 
 @Composable
-fun AboutScreen(onBack: () -> Unit) {
+fun AboutScreen(updates: UpdateController, onBack: () -> Unit) {
     val context = LocalContext.current
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
@@ -216,6 +216,8 @@ fun AboutScreen(onBack: () -> Unit) {
         Text(stringResource(R.string.about_version, version), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(20.dp))
         Text(stringResource(R.string.about_text), fontSize = 16.sp, lineHeight = 24.sp)
+        Spacer(Modifier.height(32.dp))
+        UpdateSection(updates)
     }
 }
 

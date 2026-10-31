@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -55,6 +56,8 @@ class MainActivity : ComponentActivity() {
                         val playSettings = remember { PlaySettings(getSharedPreferences("rhythme_settings", MODE_PRIVATE)) }
                         val drawerState = rememberDrawerState(DrawerValue.Closed)
                         val scope = rememberCoroutineScope()
+                        val updates = remember { UpdateController(this@MainActivity) }
+                        LaunchedEffect(Unit) { updates.check(silent = true) } // offer a newer GitHub build
 
                         fun goPlay(screen: Screen.Play) { lastPlay = screen; currentScreen = screen }
 
@@ -98,11 +101,12 @@ class MainActivity : ComponentActivity() {
                                         MenuItem.PROFILE -> ProfileScreen(playSettings, progressManager, back)
                                         MenuItem.LANGUAGE -> LanguageScreen(back)
                                         MenuItem.INSTRUMENT -> InstrumentScreen(playSettings, audioManager, back)
-                                        MenuItem.ABOUT -> AboutScreen(back)
+                                        MenuItem.ABOUT -> AboutScreen(updates, back)
                                     }
                                 }
                             }
                         }
+                        UpdatePrompt(updates)
                     }
             }
             }
