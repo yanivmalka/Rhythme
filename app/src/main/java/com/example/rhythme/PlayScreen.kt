@@ -71,6 +71,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -293,8 +295,8 @@ fun RhythmPlayScreen(
         hapticManager.startHold(startTime, currentTargetMs, grid, playFrom = from)
     }
 
-    // Tempo changed during a hold (e.g. by sliding on the pad): the vibration follows the new tempo
-    LaunchedEffect(playBpm, timeSignature) {
+    // Tempo or note changed during a hold (e.g. by sliding on the pad): the vibration follows
+    LaunchedEffect(playBpm, timeSignature, targetNote) {
         if (isHolding) startHoldHaptics(SystemClock.uptimeMillis())
     }
 
@@ -503,14 +505,26 @@ fun RhythmPlayScreen(
                                 if (soundEnabled) audioManager.startTone(0.3f)
                                 startHoldHaptics(pressedAt)
 
-                                // Follow the finger until it lifts. Sliding changes the tempo: up = faster,
-                                // sideways along the slider's direction; leaving the pad doesn't cancel.
+                                // Follow the finger until it lifts; leaving the pad doesn't cancel. The first
+                                // direction of the slide picks what it changes: up/down = tempo (up = faster),
+                                // sideways = the hold note in free play (toward the longer notes in the picker).
                                 var releasedAt: Long? = null
                                 var last = down.position
                                 var moved = 0f
                                 var sliding = false
+                                var vertical = true // axis of this slide, fixed once it starts
                                 var stepAcc = 0f
                                 val stepPx = 40.dp.toPx() // one tempo mark per 40 dp, like the << >> buttons
+                                val noteStepPx = 50.dp.toPx() // one note value per 50 dp
+                                // Next/previous note value that fits the bar (free play only; a lesson fixes the note)
+                                fun stepNote(dir: Int) {
+                                    if (lesson != null) return
+                                    val options = NoteLength.entries.filter { settings.timeSignature.fits(it) }
+                                    val next = options.getOrNull(options.indexOf(freeNote) + dir) ?: return
+                                    freeNote = next
+                                    lastResult = null
+                                    history.clear()
+                                }
                                 // Jump to the next/previous tempo mark and apply it at once (beat + vibration follow live)
                                 fun jumpMark(dir: Int) {
                                     val next = if (dir > 0) Tempo.nextMark(pendingBpm) else Tempo.previousMark(pendingBpm)
@@ -542,21 +556,32 @@ fun RhythmPlayScreen(
                                         val d = change.position - last
                                         last = change.position
                                         moved += d.getDistance()
-                                        if (!sliding && moved > viewConfiguration.touchSlop) sliding = true
-                                        if (sliding) {
-                                            stepAcc += d.x * sliderSign - d.y
+                                        if (!sliding && moved > viewConfiguration.touchSlop) {
+                                            sliding = true
+                                            val total = change.position - down.position
+                                            vertical = kotlin.math.abs(total.y) >= kotlin.math.abs(total.x)
+                                        }
+                                        if (sliding && vertical) {
+                                            stepAcc -= d.y // up = faster
                                             val steps = (stepAcc / stepPx).toInt()
                                             if (steps != 0) {
                                                 stepAcc -= steps * stepPx
                                                 repeat(kotlin.math.abs(steps)) { jumpMark(if (steps > 0) 1 else -1) }
                                             }
-                                            // Direction of the border zone the finger is in: up / slider-forward = faster
+                                            // Finger resting near the top/bottom border keeps jumping tempo marks
                                             val fromCenter = last - Offset(size.width / 2f, size.height / 2f)
                                             val dist = fromCenter.getDistance()
-                                            val lean = if (dist > 0f) (fromCenter.x * sliderSign - fromCenter.y) / dist else 0f
-                                            val newDir = if (dist >= edgeRadius && kotlin.math.abs(lean) > 0.3f) (if (lean > 0) 1 else -1) else 0
+                                            val lean = if (dist > 0f) -fromCenter.y / dist else 0f
+                                            val newDir = if (dist >= edgeRadius && kotlin.math.abs(lean) > 0.5f) (if (lean > 0) 1 else -1) else 0
                                             if (newDir != edgeDir) edgeRepeats = 0
                                             edgeDir = newDir
+                                        } else if (sliding) {
+                                            stepAcc += d.x * sliderSign // toward the longer notes, as laid out in the picker
+                                            val steps = (stepAcc / noteStepPx).toInt()
+                                            if (steps != 0) {
+                                                stepAcc -= steps * noteStepPx
+                                                repeat(kotlin.math.abs(steps)) { stepNote(if (steps > 0) 1 else -1) }
+                                            }
                                         }
                                         change.consume()
                                     }
@@ -622,7 +647,13 @@ fun RhythmPlayScreen(
                     )
                 }
 
-                // Progress ring: fills toward the target; green = release now, red = too long
+                // Progress ring: fills toward the target; green = release now, red = too long.
+                // Once full it keeps going: each new lap paints over the full ring in a shade of its color.
+                val laps = if (progress > 1f) progress.toInt() else 0 // completed laps beyond the first fill
+                val lapFraction = if (laps > 0) progress - laps else progress.coerceIn(0f, 1f)
+                var lapBase = stateColor
+                repeat((laps - 1).coerceAtLeast(0)) { lapBase = lapShade(lapBase) }
+                val lapColor = if (laps > 0) lapShade(lapBase) else stateColor
                 Canvas(modifier = Modifier.size(262.dp)) {
                     val stroke = 9.dp.toPx()
                     val inset = stroke / 2
@@ -632,9 +663,14 @@ fun RhythmPlayScreen(
                         startAngle = 0f, sweepAngle = 360f, useCenter = false,
                         topLeft = Offset(inset, inset), size = arcSize, style = Stroke(stroke)
                     )
+                    if (laps > 0) drawArc( // the ring as the previous lap left it
+                        color = lapBase.copy(alpha = ringAlpha),
+                        startAngle = 0f, sweepAngle = 360f, useCenter = false,
+                        topLeft = Offset(inset, inset), size = arcSize, style = Stroke(stroke)
+                    )
                     drawArc(
-                        color = stateColor.copy(alpha = ringAlpha),
-                        startAngle = -90f, sweepAngle = 360f * progress.coerceIn(0f, 1f), useCenter = false,
+                        color = lapColor.copy(alpha = ringAlpha),
+                        startAngle = -90f, sweepAngle = 360f * lapFraction, useCenter = false,
                         topLeft = Offset(inset, inset), size = arcSize,
                         style = Stroke(stroke, cap = StrokeCap.Round)
                     )
@@ -646,7 +682,7 @@ fun RhythmPlayScreen(
                     while (k < pulses) {
                         val angle = Math.toRadians((-90.0 + 360.0 * k / pulses))
                         val barStart = (pressBarPulse + k) % timeSignature.pulsesPerBar == 0
-                        val lit = isHolding && progress * pulses >= k // lit as the fill passes
+                        val lit = isHolding && lapFraction * pulses >= k // lit as the fill passes (each lap)
                         drawCircle(
                             color = if (barStart) StarGold.copy(alpha = if (lit) 1f else 0.55f)
                                 else Color.White.copy(alpha = if (lit) 0.9f else 0.3f),
@@ -784,6 +820,10 @@ private fun TransportRow(
         }
     }
 }
+
+/** Color of the next lap of the ring: a lighter shade of a dark color, a darker shade of a light one. */
+private fun lapShade(c: Color): Color =
+    if (c.luminance() > 0.5f) lerp(c, Color.Black, 0.35f) else lerp(c, Color.White, 0.45f)
 
 @Composable
 private fun NoteValuePicker(selected: NoteLength, timeSignature: TimeSignature, onSelect: (NoteLength) -> Unit) {
