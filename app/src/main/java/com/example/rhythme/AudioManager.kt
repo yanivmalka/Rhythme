@@ -89,7 +89,7 @@ class AudioManager {
      * Rising bell arpeggio for celebrations: notes start [gapMs] apart and ring out,
      * overlapping. Rendered here once, then mixed by the audio thread.
      */
-    fun playChime(frequencies: DoubleArray, gapMs: Int = 110) {
+    fun playChime(frequencies: DoubleArray, gapMs: Int = 110, level: Double = 0.22) {
         val ringMs = 600
         val total = ((frequencies.size - 1) * gapMs + ringMs) * sampleRate / 1000
         val out = FloatArray(total)
@@ -98,7 +98,7 @@ class AudioManager {
             for (i in 0 until ringMs * sampleRate / 1000) {
                 val t = i.toDouble() / sampleRate
                 val bell = sin(2 * PI * f * t) + 0.35 * sin(2 * PI * f * 2 * t) // fundamental + octave shimmer
-                out[start + i] += (bell * exp(-t * 6) * 0.22).toFloat()
+                out[start + i] += (bell * exp(-t * 6) * level).toFloat()
             }
         }
         chimeRequested.set(out)

@@ -150,4 +150,6 @@
     <string name="onset_early">הקדמה של %1$d מ״ש</string>
     <string name="tip_late">אתם נוטים להיכנס באיחור. לחצו מעט מוקדם יותר.</string>
     <string name="tip_early">אתם נוטים להקדים. חכו לסימן.</string>
+    <string name="mode_follow_long">אתם מובילים: החיוויים עוקבים אחרי ההחזקה</string>
+    <string name="mode_demo_long">חיקוי: האפליקציה מנגנת, אתם אחריה</string>
 </resources>

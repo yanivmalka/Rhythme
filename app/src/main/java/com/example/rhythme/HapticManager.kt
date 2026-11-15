@@ -50,6 +50,13 @@ class HapticManager(context: Context) {
         vibrate(45, 255)
     }
 
+    /** Demo mode: the player's own press, two quick light taps, unlike the guide's single firm one. */
+    fun touch() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || holdActive) return
+        vibrator.cancel()
+        vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 14, 45, 14), -1))
+    }
+
     /**
      * Plays a hold as one looping waveform, so timing doesn't depend on the UI thread. Every cycle
      * of [cycleMs] (the note's length) starts weak and ends strong, then starts over: the same

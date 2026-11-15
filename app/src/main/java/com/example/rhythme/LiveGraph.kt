@@ -14,18 +14,15 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.roundToLong
 
-/** How much time the live graph shows across its width. */
-const val GRAPH_WINDOW_MS = 8000L
-
 /** Where "now" sits across the graph: the past before it, the upcoming guide after it. */
-private const val NOW_AT = 0.72f
+const val GRAPH_NOW_AT = 0.72f
 
 /**
  * A stretch of the guide rhythm: from [at] on, notes of [noteMs] alternate with rests of
- * [restMs]. It lasts until the next anchor. [noteMs] == 0 means "no guide here".
+ * [restMs]. It lasts until the next anchor, or until [until] when the guide was told to stop.
  * Times are SystemClock.uptimeMillis().
  */
-data class GuideAnchor(val at: Long, val noteMs: Long, val restMs: Long) {
+data class GuideAnchor(val at: Long, val noteMs: Long, val restMs: Long, val until: Long = Long.MAX_VALUE) {
     val cycleMs: Long get() = noteMs + restMs
     val active: Boolean get() = noteMs > 0
 
@@ -41,9 +38,11 @@ data class PressMark(val from: Long, val to: Long?, val ratio: Float?)
 class BeatTicks(val origin: Double, val pulseMs: Double, val pulsesPerBar: Int)
 
 /**
- * Live timeline of the rhythm. The guide is a square wave (up = note, down = rest) and the
- * player's presses fill it in, colored by how close each one was. Everything scrolls with
- * time: [now] is read while drawing, so the graph moves only while the screen's clock runs.
+ * Live timeline of the rhythm. The guide is a square wave (up = note, down = rest), always there
+ * as a soft background: what should be played. The player's presses are painted over it, colored
+ * by how close each one was. Everything scrolls with time: [now] is read while drawing, so the
+ * graph moves only while the screen's clock runs. [windowMs] is the time shown across the width;
+ * the screen shrinks it as the tempo rises, so the spacing looks alike at every tempo.
  */
 @Composable
 fun LiveGraph(
@@ -51,6 +50,7 @@ fun LiveGraph(
     anchors: List<GuideAnchor>,
     presses: List<PressMark>,
     beats: BeatTicks?,
+    windowMs: Long,
     modifier: Modifier = Modifier
 ) {
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
@@ -58,8 +58,8 @@ fun LiveGraph(
         val t0 = now().toDouble()
         val w = size.width
         val h = size.height
-        val pxPerMs = w / GRAPH_WINDOW_MS
-        val nowX = w * NOW_AT
+        val pxPerMs = w / windowMs.coerceAtLeast(1)
+        val nowX = w * GRAPH_NOW_AT
         val tMin = t0 - nowX / pxPerMs
         val tMax = t0 + (w - nowX) / pxPerMs
         // Time runs in the reading direction: left to right, right to left in RTL
@@ -97,7 +97,43 @@ fun LiveGraph(
             }
         }
 
-        // The player's presses fill the wave
+        // The guide, pass 1: its notes as a soft background, then (pass 2, over the presses) its outline
+        val guideFill = Color.White.copy(alpha = 0.10f)
+        val guideColor = Color.White.copy(alpha = 0.55f)
+        val guideStroke = 1.5.dp.toPx()
+        fun drawGuide(outline: Boolean) {
+            anchors.forEachIndexed { i, a ->
+                if (!a.active) return@forEachIndexed
+                val segStart = maxOf(a.at.toDouble(), tMin)
+                val segEnd = minOf(anchors.getOrNull(i + 1)?.at?.toDouble() ?: tMax, a.until.toDouble(), tMax)
+                if (segEnd <= segStart) return@forEachIndexed
+                var k = floor((segStart - a.at) / a.cycleMs).toLong()
+                while (true) {
+                    val noteStart = a.at.toDouble() + k * a.cycleMs
+                    if (noteStart >= segEnd) break
+                    val noteEnd = noteStart + a.noteMs
+                    val s = maxOf(noteStart, segStart)
+                    val e = minOf(noteEnd, segEnd)
+                    if (e > s) {
+                        if (!outline) {
+                            drawRect(guideFill, topLeft = Offset(minOf(x(s), x(e)), high), size = Size(abs(x(e) - x(s)), low - high))
+                        } else {
+                            drawLine(guideColor, Offset(x(s), high), Offset(x(e), high), strokeWidth = guideStroke)
+                            if (noteStart >= segStart) {
+                                drawLine(guideColor, Offset(x(noteStart), low), Offset(x(noteStart), high), strokeWidth = guideStroke)
+                            }
+                            if (noteEnd <= segEnd) {
+                                drawLine(guideColor, Offset(x(noteEnd), high), Offset(x(noteEnd), low), strokeWidth = guideStroke)
+                            }
+                        }
+                    }
+                    k++
+                }
+            }
+        }
+        drawGuide(outline = false)
+
+        // The player's presses, painted over the background
         for (p in presses) {
             val to = (p.to?.toDouble() ?: t0).coerceAtMost(tMax)
             val from = p.from.toDouble().coerceAtLeast(tMin)
@@ -111,33 +147,7 @@ fun LiveGraph(
             )
         }
 
-        // The guide: outline of the chosen rhythm
-        val guideColor = Color.White.copy(alpha = 0.55f)
-        val guideStroke = 1.5.dp.toPx()
-        anchors.forEachIndexed { i, a ->
-            if (!a.active) return@forEachIndexed
-            val segStart = maxOf(a.at.toDouble(), tMin)
-            val segEnd = minOf(anchors.getOrNull(i + 1)?.at?.toDouble() ?: tMax, tMax)
-            if (segEnd <= segStart) return@forEachIndexed
-            var k = floor((segStart - a.at) / a.cycleMs).toLong()
-            while (true) {
-                val noteStart = a.at.toDouble() + k * a.cycleMs
-                if (noteStart >= segEnd) break
-                val noteEnd = noteStart + a.noteMs
-                val s = maxOf(noteStart, segStart)
-                val e = minOf(noteEnd, segEnd)
-                if (e > s) {
-                    drawLine(guideColor, Offset(x(s), high), Offset(x(e), high), strokeWidth = guideStroke)
-                    if (noteStart >= segStart) {
-                        drawLine(guideColor, Offset(x(noteStart), low), Offset(x(noteStart), high), strokeWidth = guideStroke)
-                    }
-                    if (noteEnd <= segEnd) {
-                        drawLine(guideColor, Offset(x(noteEnd), high), Offset(x(noteEnd), low), strokeWidth = guideStroke)
-                    }
-                }
-                k++
-            }
-        }
+        drawGuide(outline = true)
 
         // "Now"
         drawLine(Color.White.copy(alpha = 0.7f), Offset(x(t0), 0f), Offset(x(t0), h), strokeWidth = thin)

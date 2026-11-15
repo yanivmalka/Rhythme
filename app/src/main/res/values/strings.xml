@@ -154,4 +154,6 @@
     <string name="onset_early">%1$d ms early</string>
     <string name="tip_late">You tend to come in late. Press a little sooner.</string>
     <string name="tip_early">You tend to come in early. Wait for the cue.</string>
+    <string name="mode_follow_long">You lead: the cues follow your hold</string>
+    <string name="mode_demo_long">Imitate: the app plays, you follow</string>
 </resources>
