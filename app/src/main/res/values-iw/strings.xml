@@ -185,4 +185,5 @@
     <string name="session_great">מצוין! עוד סיבוב אחד יקבע את הקצב.</string>
     <string name="session_good">התקדמות יפה. עוד סיבוב וזה יישב טוב יותר.</string>
     <string name="session_try">כל סיבוב משפר. נסו שוב, אולי מעט לאט יותר.</string>
+    <string name="about_credits">צלילי הפסנתר, הגיטרה, הכינור, הקלרינט והתוף: הקלטות מתוך FluidR3_GM soundfont מאת Frank Wen (דרך gleitz/midi-js-soundfonts), ברישיון Creative Commons Attribution 3.0, שקוצרו והותאמו ללולאה עבור האפליקציה.</string>
 </resources>

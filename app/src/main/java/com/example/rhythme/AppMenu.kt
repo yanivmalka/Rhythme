@@ -330,6 +330,13 @@ fun AboutScreen(updates: UpdateController, onBack: () -> Unit) {
         Text(stringResource(R.string.about_version, version), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(20.dp))
         Text(stringResource(R.string.about_text), fontSize = 16.sp, lineHeight = 24.sp)
+        Text(
+            stringResource(R.string.about_credits),
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 16.dp)
+        )
         Spacer(Modifier.height(32.dp))
         UpdateSection(updates)
     }

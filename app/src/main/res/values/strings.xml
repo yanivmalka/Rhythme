@@ -189,4 +189,5 @@
     <string name="session_great">Excellent! One more round will lock the rhythm in.</string>
     <string name="session_good">Good progress. Another round and it will sit better.</string>
     <string name="session_try">Every round helps. Try again, maybe a little slower.</string>
+    <string name="about_credits">Piano, guitar, violin, clarinet and drum sounds: recordings from the FluidR3_GM soundfont by Frank Wen (via gleitz/midi-js-soundfonts), Creative Commons Attribution 3.0, trimmed and looped for this app.</string>
 </resources>

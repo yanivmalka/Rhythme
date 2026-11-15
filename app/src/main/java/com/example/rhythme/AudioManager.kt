@@ -1,5 +1,6 @@
 package com.example.rhythme
 
+import android.content.res.AssetManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
@@ -8,6 +9,8 @@ import android.os.Process
 import android.util.Log
 import androidx.annotation.StringRes
 import java.util.concurrent.atomic.AtomicBoolean
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.PI
 import kotlin.math.exp
@@ -23,25 +26,39 @@ enum class Envelope {
 }
 
 /**
- * Instruments for the held note. Each is a different kind of sound, not only a different color:
- * a set of harmonics (amplitudes of the 1st, 2nd, 3rd... harmonic) plus how the note evolves.
+ * Instruments for the held note. Each is a different kind of sound, not only a different color.
+ * Those with a [sampleName] play recordings of the real instrument (see assets/samples); the
+ * harmonics (amplitudes of the 1st, 2nd, 3rd... harmonic) and the envelope describe the
+ * synthesized version, used for the others and as a fallback until the recordings are loaded.
  */
-enum class Instrument(@StringRes val nameRes: Int, harmonics: FloatArray, val envelope: Envelope = Envelope.SUSTAIN) {
-    PURE(R.string.instrument_pure, floatArrayOf(1f)),
+enum class Instrument(
+    @StringRes val nameRes: Int,
+    harmonics: FloatArray,
+    val envelope: Envelope = Envelope.SUSTAIN,
+    val sampleName: String? = null
+) {
+    PIANO(R.string.instrument_piano, floatArrayOf(1f, 0.6f, 0.3f, 0.15f), Envelope.PIANO, "piano"),
+    GUITAR(R.string.instrument_guitar, floatArrayOf(1f, 0.55f, 0.4f, 0.2f, 0.12f, 0.06f), Envelope.PLUCK, "guitar"),
+    VIOLIN(R.string.instrument_violin, floatArrayOf(1f, 0.5f, 0.33f, 0.25f, 0.2f, 0.17f, 0.14f, 0.12f), Envelope.BOWED, "violin"),
+    CLARINET(R.string.instrument_clarinet, floatArrayOf(1f, 0f, 0.45f, 0f, 0.25f, 0f, 0.12f), Envelope.SUSTAIN, "clarinet"),
+    DRUM(R.string.instrument_drum, floatArrayOf(1f, 0.25f), Envelope.DRUM, "drum"),
     ORGAN(R.string.instrument_organ, floatArrayOf(1f, 0.5f, 0.33f, 0.25f)),
-    CLARINET(R.string.instrument_clarinet, floatArrayOf(1f, 0f, 0.45f, 0f, 0.25f, 0f, 0.12f)),
-    VIOLIN(R.string.instrument_violin, floatArrayOf(1f, 0.5f, 0.33f, 0.25f, 0.2f, 0.17f, 0.14f, 0.12f), Envelope.BOWED),
-    GUITAR(R.string.instrument_guitar, floatArrayOf(1f, 0.55f, 0.4f, 0.2f, 0.12f, 0.06f), Envelope.PLUCK),
-    PIANO(R.string.instrument_piano, floatArrayOf(1f, 0.6f, 0.3f, 0.15f), Envelope.PIANO),
-    DRUM(R.string.instrument_drum, floatArrayOf(1f, 0.25f), Envelope.DRUM),
+    PURE(R.string.instrument_pure, floatArrayOf(1f)),
     RETRO(R.string.instrument_retro, floatArrayOf(1f, 0f, 1 / 3f, 0f, 1 / 5f, 0f, 1 / 7f, 0f, 1 / 9f));
 
     /** Normalized so every instrument peaks at the same level. */
     val weights: FloatArray = harmonics.sum().let { total -> FloatArray(harmonics.size) { harmonics[it] / total } }
 
     /** Struck or plucked: the note is loud at its start and can't swell, so it plays at a fixed level. */
-    val percussive: Boolean get() = envelope == Envelope.PLUCK || envelope == Envelope.DRUM
+    val percussive: Boolean get() = envelope == Envelope.PLUCK || envelope == Envelope.DRUM || envelope == Envelope.PIANO
 }
+
+/**
+ * One recorded note. [data] is mono PCM at [rate]; other pitches are made by playing it faster
+ * or slower. A sustained note loops between [loopStart] and [loopEnd] for as long as it is
+ * held; [loopEnd] == 0 means it plays once and dies away.
+ */
+class Sample(val hz: Double, val rate: Int, val data: FloatArray, val loopStart: Int, val loopEnd: Int)
 
 /**
  * One long-lived streaming AudioTrack that mixes the hold tone and beat clicks.
@@ -53,6 +70,7 @@ class AudioManager {
     private val chunkSize = sampleRate / 100 // 10ms per write keeps latency low
 
     @Volatile var instrument = Instrument.PURE
+    @Volatile private var samples: Map<String, List<Sample>> = emptyMap() // recordings by Instrument.sampleName
     @Volatile private var toneOn = false
     @Volatile private var toneVolume = 0.3f
     /** The player's volume choice for the held note and the demo's cue tone; 1 = normal. */
@@ -71,6 +89,51 @@ class AudioManager {
     }
     private val clicks = arrayOf(makeClick(1000.0, 0.45), makeClick(1250.0, 0.5), makeClick(1600.0, 0.6))
     @Volatile private var clickAccent = 0
+
+    /**
+     * Loads the instrument recordings from assets/samples in the background. Until they are
+     * ready (or if they can't be read) the instruments play their synthesized version.
+     */
+    fun loadSamples(assets: AssetManager) {
+        Thread({
+            try {
+                val loaded = HashMap<String, MutableList<Sample>>()
+                assets.open("samples/index.txt").bufferedReader().useLines { lines ->
+                    for (line in lines) {
+                        val f = line.trim().split(' ')
+                        if (f.size < 5) continue
+                        val (rate, data) = readWav(assets.open("samples/${f[4]}").use { it.readBytes() })
+                        if (data.isEmpty()) continue
+                        val hz = 440.0 * Math.pow(2.0, (f[1].toInt() - 69) / 12.0) // MIDI note to pitch
+                        val loopEnd = f[3].toInt().coerceAtMost(data.size)
+                        loaded.getOrPut(f[0]) { ArrayList() }.add(Sample(hz, rate, data, f[2].toInt().coerceIn(0, loopEnd), loopEnd))
+                    }
+                }
+                samples = loaded
+            } catch (e: Exception) {
+                Log.e(TAG, "Loading instrument samples failed", e)
+            }
+        }, "RhythmeSamples").start()
+    }
+
+    /** Reads a 16-bit mono WAV: its sample rate and the audio as floats in -1..1. */
+    private fun readWav(bytes: ByteArray): Pair<Int, FloatArray> {
+        val b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        var rate = 22050
+        var pos = 12 // after "RIFF", size, "WAVE"
+        while (pos + 8 <= bytes.size) {
+            val id = String(bytes, pos, 4, Charsets.US_ASCII)
+            val size = b.getInt(pos + 4)
+            val body = pos + 8
+            if (id == "fmt ") rate = b.getInt(body + 4)
+            if (id == "data") {
+                val n = minOf(size, bytes.size - body) / 2
+                return rate to FloatArray(n) { b.getShort(body + it * 2) / 32768f }
+            }
+            pos = body + size + (size and 1)
+        }
+        return rate to FloatArray(0)
+    }
 
     @Synchronized
     fun start() {
@@ -149,6 +212,9 @@ class AudioManager {
 
         val buffer = ShortArray(chunkSize)
         val rampStep = 1f / (sampleRate * 0.005f) // 5ms fade avoids clicks on start/stop
+        val releaseStep = 1f / (sampleRate * 0.08f) // recordings let go more gently, like the instrument
+        var sample: Sample? = null // the recording playing now, if the instrument has one
+        var samplePos = 0.0
         var phase = 0.0
         var gain = 0f
         var wasOn = false
@@ -171,16 +237,37 @@ class AudioManager {
             val clickGain = clickVolume
             val on = toneOn
             val voice = instrument
-            if (strikeRequested.getAndSet(false) || (on && !wasOn)) toneSamples = 0
+            if (strikeRequested.getAndSet(false) || (on && !wasOn)) { // a note starts
+                toneSamples = 0
+                samplePos = 0.0
+                // The recording nearest in pitch: it is shifted by two semitones at most
+                val hz = frequency
+                sample = voice.sampleName?.let { samples[it] }
+                    ?.minByOrNull { kotlin.math.abs(kotlin.math.ln(hz / it.hz)) }
+            }
             wasOn = on
+            val playing = sample
+            val sampleStep = if (playing != null) playing.rate.toDouble() / sampleRate * frequency / playing.hz else 0.0
+            val fall = if (playing != null) releaseStep else rampStep
             val target = if (!on) 0f else (if (voice.percussive) 0.45f else toneVolume) * toneLevel
             val weights = voice.weights
             for (i in 0 until chunkSize) {
-                gain += (target - gain).coerceIn(-rampStep, rampStep)
+                gain += (target - gain).coerceIn(-fall, rampStep)
                 var wave = 0.0
-                for (k in weights.indices) if (weights[k] != 0f) wave += weights[k] * sin((k + 1) * phase)
                 val t = toneSamples.toDouble() / sampleRate
                 var bend = 1.0 // vibrato: the pitch wavers slightly
+                if (playing != null) {
+                    // The recording, read at the speed that gives the wanted pitch (linear interpolation)
+                    val d = playing.data
+                    val ip = samplePos.toInt()
+                    if (ip < d.size) {
+                        val next = if (ip + 1 < d.size) d[ip + 1] else if (playing.loopEnd > 0) d[playing.loopStart] else 0f
+                        wave = d[ip] + (next - d[ip]) * (samplePos - ip)
+                    }
+                    samplePos += sampleStep
+                    if (playing.loopEnd > 0 && samplePos >= playing.loopEnd) samplePos -= playing.loopEnd - playing.loopStart
+                } else {
+                for (k in weights.indices) if (weights[k] != 0f) wave += weights[k] * sin((k + 1) * phase)
                 when (voice.envelope) {
                     Envelope.SUSTAIN -> Unit
                     Envelope.PIANO -> wave *= 0.35 + 0.65 * exp(-t * 4)
@@ -195,6 +282,7 @@ class AudioManager {
                         wave = wave * exp(-t * 13) + hiss * 0.55 * exp(-t * 55)
                         bend = 0.5 + 0.5 * exp(-t * 30) // the drum's pitch drops right after the hit
                     }
+                }
                 }
                 toneSamples++
                 var s = (wave * gain).toFloat()

@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         hapticManager = HapticManager(this)
         audioManager = AudioManager()
+        audioManager.loadSamples(assets) // recordings of the real instruments
         progressManager = ProgressManager(this)
 
         enableEdgeToEdge()
