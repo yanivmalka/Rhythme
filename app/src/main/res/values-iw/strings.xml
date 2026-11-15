@@ -152,4 +152,11 @@
     <string name="tip_early">אתם נוטים להקדים. חכו לסימן.</string>
     <string name="mode_follow_long">אתם מובילים: החיוויים עוקבים אחרי ההחזקה</string>
     <string name="mode_demo_long">חיקוי: האפליקציה מנגנת, אתם אחריה</string>
+    <string name="rest_sound_title">צליל במעבר להפסקה</string>
+    <string name="touch_sound_title">צליל הלחיצה שלכם</string>
+    <string name="touch_sound_hint">במצב חיקוי, מה שנשמע כשאתם לוחצים. הקישו כדי לשמוע.</string>
+    <string name="touch_sound_bell">פעמון</string>
+    <string name="touch_sound_double_bell">פעמון כפול</string>
+    <string name="touch_sound_click">נקישה</string>
+    <string name="touch_sound_off">ללא צליל</string>
 </resources>

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Launcher icon: the hold pad with its progress ring three quarters full (gold head),
-     and the guide's square wave (note, rest, note) on the pad. Kept inside the 66dp safe zone. -->
+     and the guide's square wave on the pad, shaped as "rm" for the app's name. Kept inside the 66dp safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -25,11 +25,11 @@
     <path
         android:fillColor="#3380E6"
         android:pathData="M54,54m-20,0a20,20 0 1,0 40,0a20,20 0 1,0 -40,0" />
-    <!-- Square wave -->
+    <!-- Square wave drawn as the letters "rm" (RhythMe) -->
     <path
-        android:pathData="M41.5,59h4v-10h7v10h4v-10h7v10h3"
+        android:pathData="M40,60V48H46.5 M51,60V48H59V60 M59,48H67V60"
         android:strokeColor="#FFFFFF"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:strokeWidth="2.8" />
+        android:strokeWidth="3" />
 </vector>

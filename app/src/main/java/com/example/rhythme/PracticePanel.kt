@@ -17,9 +17,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,6 +49,7 @@ data class PanelReadout(val tenths: Long, val ofMs: Long, @StringRes val caption
  * Practice panel: slides down from the top of the screen over the controls while the player
  * practices, because the pad's own text is under the finger. Shows the chosen rhythm and the
  * running time in a large font. Leaves by itself after a pause, or when pushed up / tapped.
+ * While playing it also carries a Stop button, because it covers the one in the controls.
  */
 @Composable
 fun PracticePanel(
@@ -56,6 +62,8 @@ fun PracticePanel(
     noteMs: Long,
     restMs: Long,
     demoMode: Boolean,
+    isPlaying: Boolean,
+    onStop: () -> Unit,
     readout: () -> PanelReadout,
     modifier: Modifier = Modifier
 ) {
@@ -127,7 +135,15 @@ fun PracticePanel(
                     modifier = Modifier.padding(bottom = 14.dp)
                 )
             }
-            Text(stringResource(shown.captionRes), fontSize = 20.sp, color = shown.color)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(shown.captionRes), fontSize = 20.sp, color = shown.color)
+                if (isPlaying) {
+                    Spacer(Modifier.width(20.dp))
+                    FilledIconButton(onClick = onStop, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Filled.Stop, stringResource(R.string.cd_stop), modifier = Modifier.size(28.dp))
+                    }
+                }
+            }
 
             // Handle: hints that the panel can be pushed back up
             Box(

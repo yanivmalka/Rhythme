@@ -26,6 +26,10 @@ data class GuideAnchor(val at: Long, val noteMs: Long, val restMs: Long, val unt
     val cycleMs: Long get() = noteMs + restMs
     val active: Boolean get() = noteMs > 0
 
+    /** Start of the first guide note at or after [t]. */
+    fun nextNoteStart(t: Long): Long =
+        if (t <= at) at else at + ((t - at + cycleMs - 1) / cycleMs) * cycleMs
+
     /** Start of the guide note nearest to [t]. */
     fun nearestNoteStart(t: Long): Long =
         at + ((t - at).toDouble() / cycleMs).roundToLong().coerceAtLeast(0) * cycleMs

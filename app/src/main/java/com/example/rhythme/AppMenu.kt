@@ -202,6 +202,49 @@ fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, onBack:
                 )
             }
         }
+
+        // A sound where the note ends and the rest begins
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 28.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .clickable {
+                    settings.restSound = !settings.restSound
+                    if (settings.restSound) audioManager.playRestCue()
+                }
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+        ) {
+            Text(stringResource(R.string.rest_sound_title), fontSize = 18.sp, modifier = Modifier.weight(1f))
+            Switch(
+                checked = settings.restSound,
+                onCheckedChange = {
+                    settings.restSound = it
+                    if (it) audioManager.playRestCue()
+                }
+            )
+        }
+
+        // Imitate mode: the sound of the player's own press
+        Text(
+            stringResource(R.string.touch_sound_title),
+            fontSize = 20.sp,
+            modifier = Modifier.padding(top = 28.dp)
+        )
+        Text(
+            stringResource(R.string.touch_sound_hint),
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+        TouchSound.entries.forEach { sound ->
+            ChoiceRow(stringResource(sound.nameRes), settings.touchSound == sound) {
+                settings.touchSound = sound
+                audioManager.frequency = PITCHES_HZ[settings.pitchIndex]
+                audioManager.playTouchSound(sound)
+            }
+        }
     }
 }
 

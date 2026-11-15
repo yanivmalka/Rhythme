@@ -156,4 +156,11 @@
     <string name="tip_early">You tend to come in early. Wait for the cue.</string>
     <string name="mode_follow_long">You lead: the cues follow your hold</string>
     <string name="mode_demo_long">Imitate: the app plays, you follow</string>
+    <string name="rest_sound_title">Sound when the rest begins</string>
+    <string name="touch_sound_title">Sound of your press</string>
+    <string name="touch_sound_hint">In imitate mode, what you hear when you press. Tap one to hear it.</string>
+    <string name="touch_sound_bell">Bell</string>
+    <string name="touch_sound_double_bell">Double bell</string>
+    <string name="touch_sound_click">Click</string>
+    <string name="touch_sound_off">No sound</string>
 </resources>
