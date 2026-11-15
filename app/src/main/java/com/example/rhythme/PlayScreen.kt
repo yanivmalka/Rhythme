@@ -2,6 +2,8 @@ package com.example.rhythme
 
 import android.content.SharedPreferences
 import android.os.SystemClock
+import com.example.rhythme.ui.theme.Ink
+import com.example.rhythme.ui.theme.Palette
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -117,10 +119,10 @@ private const val ONSET_OK_MS = 40L        // pressing this close to the guide's
 
 private val PadBlue = Color(0.2f, 0.5f, 0.9f)
 internal val FillBlue = Color(0xFF6FB1FF) // the pad "fills" with this from the bottom
-private val RingBlue = Color(0xFF7FD4FF)
-private val ReleaseGreen = Color(0xFF34C759)
-private val OverRed = Color(0xFFFF6B6B)
-private val RestGray = Color(0xFF9AA4B2) // the ring while it counts a rest down
+private val RingBlue: Color get() = Palette.pick(Color(0xFF7FD4FF), Color(0xFF1668C7))
+private val ReleaseGreen: Color get() = Palette.pick(Color(0xFF34C759), Color(0xFF1E9E48))
+private val OverRed: Color get() = Palette.pick(Color(0xFFFF6B6B), Color(0xFFD93025))
+private val RestGray: Color get() = Palette.pick(Color(0xFF9AA4B2), Color(0xFF6B7686)) // the ring while it counts a rest down
 
 /**
  * What successive notes play: the same note every time, or one step after another up and
@@ -170,6 +172,16 @@ fun AudioManager.playTouchSound(sound: TouchSound, pitchIndex: Int, volume: Floa
 fun AudioManager.playRestCue(pitchIndex: Int, volume: Float = 1f) =
     playChime(doubleArrayOf(PITCHES_HZ[pitchIndex.coerceIn(PITCHES_HZ.indices)] / 2), level = 0.3 * volume)
 
+/** Where the volume sliders start: the sounds' normal level. */
+const val DEFAULT_VOLUME = 80
+
+/**
+ * Gain for a volume slider at [percent] (0..100). Hearing is roughly logarithmic, so the gain
+ * follows the square of the slider: every step is heard, not only the lowest ones. 80 is the
+ * normal level (gain 1), 100 is about 1.6 times louder, 40 a quarter, 0 silent.
+ */
+fun volumeGain(percent: Int): Float = (percent / DEFAULT_VOLUME.toFloat()).let { it * it }
+
 /** Player choices: shared by all screens and saved across app launches. */
 class PlaySettings(private val prefs: SharedPreferences) {
     private val sound = mutableStateOf(prefs.getBoolean("sound", true))
@@ -188,7 +200,7 @@ class PlaySettings(private val prefs: SharedPreferences) {
     private val vibStrength = mutableIntStateOf(prefs.getInt("vibration_strength", 100).coerceIn(10, 100))
     private val fade = mutableStateOf(prefs.getBoolean("beat_fade", false))
     private val volumes = mutableMapOf<String, androidx.compose.runtime.MutableIntState>()
-    private fun volume(key: String) = volumes.getOrPut(key) { mutableIntStateOf(prefs.getInt(key, 100).coerceIn(10, 150)) }
+    private fun volume(key: String) = volumes.getOrPut(key) { mutableIntStateOf(prefs.getInt(key, DEFAULT_VOLUME).coerceIn(0, 100)) }
     private fun setVolume(key: String, v: Int) { volume(key).intValue = v; prefs.edit().putInt(key, v).apply() }
     private val scaleState = mutableStateOf(enumOr(prefs.getString("scale", null), Scale.NONE))
     private val touch = mutableStateOf(enumOr(prefs.getString("touch_sound", null), TouchSound.BELL))
@@ -214,11 +226,11 @@ class PlaySettings(private val prefs: SharedPreferences) {
     var vibrationStrength: Int get() = vibStrength.intValue; set(v) { vibStrength.intValue = v; prefs.edit().putInt("vibration_strength", v).apply() }
     /** The beat grows quieter as the player locks in, down to silence. Off: the beat always plays. */
     var beatFade: Boolean get() = fade.value; set(v) { fade.value = v; prefs.edit().putBoolean("beat_fade", v).apply() }
-    /** Loudness of each kind of sound, in percent of its normal level (10..150). */
-    var toneVolume: Int get() = volume("vol_tone").intValue; set(v) = setVolume("vol_tone", v)
-    var clickVolume: Int get() = volume("vol_click").intValue; set(v) = setVolume("vol_click", v)
-    var restVolume: Int get() = volume("vol_rest").intValue; set(v) = setVolume("vol_rest", v)
-    var touchVolume: Int get() = volume("vol_touch").intValue; set(v) = setVolume("vol_touch", v)
+    /** Loudness of each kind of sound, 0..100 on the slider; [volumeGain] turns it into a gain. */
+    var toneVolume: Int get() = volume("volume_tone").intValue; set(v) = setVolume("volume_tone", v)
+    var clickVolume: Int get() = volume("volume_click").intValue; set(v) = setVolume("volume_click", v)
+    var restVolume: Int get() = volume("volume_rest").intValue; set(v) = setVolume("volume_rest", v)
+    var touchVolume: Int get() = volume("volume_touch").intValue; set(v) = setVolume("volume_touch", v)
     /** Successive notes walk up and down this scale ([Scale.NONE]: always the same note). */
     var scale: Scale get() = scaleState.value; set(v) { scaleState.value = v; prefs.edit().putString("scale", v.name).apply() }
     /** Demo mode: the sound of the player's own press. */
@@ -310,6 +322,10 @@ fun RhythmPlayScreen(
     var panelShown by remember { mutableStateOf(false) }
     var panelDismissed by remember { mutableStateOf(false) }
 
+    // This round of playing (from Play to Stop): how many holds counted and how accurate they were
+    var sessionHolds by remember { mutableIntStateOf(0) }
+    var sessionAccuracy by remember { mutableFloatStateOf(0f) } // sum of the holds' scores, 0..1 each
+
     // Results and lesson progress
     val lesson by rememberUpdatedState(currentLesson)
     var lastResult by remember { mutableStateOf<HoldResult?>(null) }
@@ -354,6 +370,8 @@ fun RhythmPlayScreen(
         lastActivityAt = t
         stopAt = 0L
         setAnchor(GuideAnchor(t, currentTargetMs, currentRestMs))
+        sessionHolds = 0
+        sessionAccuracy = 0f
         isPlaying = true
         hintVisible = true
         holdsSinceHint = 0
@@ -400,7 +418,7 @@ fun RhythmPlayScreen(
     LaunchedEffect(settings.instrument) { audioManager.instrument = settings.instrument }
     LaunchedEffect(settings.vibrationStrength) { hapticManager.strength = settings.vibrationStrength / 100f }
     LaunchedEffect(settings.beatFade) { clickVolume = 1f }
-    LaunchedEffect(settings.toneVolume) { audioManager.toneLevel = settings.toneVolume / 100f }
+    LaunchedEffect(settings.toneVolume) { audioManager.toneLevel = volumeGain(settings.toneVolume) }
 
     // Tempo applies once the slider / buttons rest; until then the old tempo keeps playing
     LaunchedEffect(pendingBpm) {
@@ -429,7 +447,7 @@ fun RhythmPlayScreen(
             val accent = timeSignature.accents[beatInBar]
             beatTick++
             // The metronome button mutes the click; the speaker button mutes only the held note
-            if (clickVolume > 0f && settings.beatSound) audioManager.playClick(clickVolume * settings.clickVolume / 100f, accent)
+            if (clickVolume > 0f && settings.beatSound) audioManager.playClick(clickVolume * volumeGain(settings.clickVolume), accent)
             if (vibrationEnabled) hapticManager.tick(accent)
             n++
         }
@@ -505,15 +523,20 @@ fun RhythmPlayScreen(
         restChoice?.let { if (!timeSignature.fits(it)) restChoice = null }
     }
 
-    // While playing, a change to the rhythm (tempo, note, rest, meter, mode) never redraws the
-    // wave already on the graph: it takes over at the first new cycle past the drawn part
+    // While playing, a change to the rhythm is heard and seen right away, on the beat: a new
+    // tempo or meter restarts the beat, so the guide restarts with it; a new note, rest or mode
+    // starts on the next beat. The wave ahead on the graph is redrawn with the new values.
+    val beatSetup = remember { arrayOf<Any>(playBpm to timeSignature) }
     LaunchedEffect(demoMode, targetMs, restMs, timeSignature) {
+        val setup = playBpm to timeSignature
+        val beatRestarted = beatSetup[0] != setup
+        beatSetup[0] = setup
         if (!isPlaying) return@LaunchedEffect
         val t = SystemClock.uptimeMillis()
         lastActivityAt = t
-        val drawnUntil = t + ((1f - GRAPH_NOW_AT) * windowMs).toLong()
-        val from = anchors.lastOrNull { it.at <= drawnUntil }?.takeIf { it.active }?.nextNoteStart(drawnUntil) ?: t
-        setAnchor(GuideAnchor(from, targetMs, restMs))
+        val nextBeat = (lastBeatAt + timeSignature.pulseMs(playBpm)).toLong()
+        val onBeat = !beatRestarted && lastBeatAt > 0 && nextBeat >= t && nextBeat - t < 2000
+        setAnchor(GuideAnchor(if (onBeat) nextBeat else t, targetMs, restMs))
     }
     LaunchedEffect(demoMode) { // each mode starts with a clean slate
         lastResult = null
@@ -549,7 +572,7 @@ fun RhythmPlayScreen(
                 // Optional, in both modes: a sound where the guide's note ends and its rest begins
                 if (soundEnabled && settings.restSound) scope.launch {
                     delay(noteMs)
-                    if (isPlaying) audioManager.playRestCue(settings.restPitch, settings.restVolume / 100f)
+                    if (isPlaying) audioManager.playRestCue(settings.restPitch, volumeGain(settings.restVolume))
                 }
                 if (demoMode) {
                     if (vibrationEnabled) hapticManager.cue()
@@ -802,7 +825,7 @@ fun RhythmPlayScreen(
                                     // The player's own press, told apart from the guide's cue by every
                                     // sense: a bell (not the tone), two light taps (not one firm one),
                                     // a gold rim (not the white flash)
-                                    if (soundEnabled) audioManager.playTouchSound(settings.touchSound, settings.touchPitch, settings.touchVolume / 100f)
+                                    if (soundEnabled) audioManager.playTouchSound(settings.touchSound, settings.touchPitch, volumeGain(settings.touchVolume))
                                     if (vibrationEnabled) hapticManager.touch()
                                     if (lightEnabled) scope.launch {
                                         touchFlash.snapTo(1f)
@@ -921,7 +944,7 @@ fun RhythmPlayScreen(
                                         ?: (releaseTime + currentRestMs)
                                 }
                                 // Demo mode: a softer, lower version of the press sound marks the release
-                                if (demoMode && soundEnabled) audioManager.playTouchSound(settings.touchSound, settings.touchPitch, settings.touchVolume / 100f, release = true)
+                                if (demoMode && soundEnabled) audioManager.playTouchSound(settings.touchSound, settings.touchPitch, volumeGain(settings.touchVolume), release = true)
 
                                 // The player gets it: let the hint go after a couple of holds
                                 holdsSinceHint++
@@ -938,6 +961,8 @@ fun RhythmPlayScreen(
                                     presses[presses.lastIndex] = PressMark(startTime, releaseTime, result.ratio)
                                 }
                                 lastResult = result
+                                sessionHolds++
+                                sessionAccuracy += accuracy
                                 history.add(result)
                                 if (history.size > HISTORY_SIZE) history.removeAt(0)
 
@@ -1037,7 +1062,7 @@ fun RhythmPlayScreen(
                     }
 
                     drawArc(
-                        color = Color.White.copy(alpha = 0.08f),
+                        color = Ink.copy(alpha = 0.12f),
                         startAngle = 0f, sweepAngle = 360f, useCenter = false,
                         topLeft = Offset(inset, inset), size = arcSize, style = Stroke(stroke)
                     )
@@ -1064,7 +1089,7 @@ fun RhythmPlayScreen(
                         val lit = noteFraction * pulses >= k // lit as the fill passes (each lap)
                         drawCircle(
                             color = if (barStart) StarGold.copy(alpha = if (lit) 1f else 0.55f)
-                                else Color.White.copy(alpha = if (lit) 0.9f else 0.3f),
+                                else Ink.copy(alpha = if (lit) 0.9f else 0.3f),
                             radius = stroke * if (barStart) 0.5f else 0.32f,
                             center = Offset(center.x + radius * kotlin.math.cos(angle).toFloat(), center.y + radius * kotlin.math.sin(angle).toFloat())
                         )
@@ -1152,8 +1177,13 @@ fun RhythmPlayScreen(
                         else -> stringResource(R.string.onset_early, (-ms).toInt())
                     }
                 }
+                // Once the round is over, the last hold's numbers matter less than the whole round:
+                // show its summary and a word that invites another round
+                val roundOver = !isPlaying && !isHolding && sessionHolds > 0
+                val average = if (sessionHolds > 0) (sessionAccuracy / sessionHolds * 100).roundToInt() else 0
                 Text(
                     text = when {
+                        roundOver -> stringResource(R.string.session_summary, sessionHolds, average)
                         result != null -> stringResource(
                             R.string.lesson_result, result.heldMs / 1000.0, (result.ratio * 100).roundToInt()
                         ) + (onsetText?.let { "  ·  $it" } ?: "")
@@ -1161,15 +1191,26 @@ fun RhythmPlayScreen(
                         currentLesson != null -> stringResource(R.string.hint_lesson)
                         else -> stringResource(R.string.hint_free_play)
                     },
-                    fontSize = 14.sp,
+                    fontSize = if (roundOver) 16.sp else 14.sp,
                     maxLines = 1,
-                    color = result?.let { scoreColor(it.ratio) } ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = when {
+                        roundOver -> MaterialTheme.colorScheme.primary
+                        result != null -> scoreColor(result.ratio)
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                     modifier = Modifier.padding(top = 4.dp)
                 )
                 val tip = timingTip(history)
                 Text(
-                    text = tip?.let { stringResource(it) } ?: "",
-                    fontSize = 12.sp,
+                    text = when {
+                        roundOver -> stringResource(
+                            if (average >= 85) R.string.session_great
+                            else if (average >= 60) R.string.session_good
+                            else R.string.session_try
+                        )
+                        else -> tip?.let { stringResource(it) } ?: ""
+                    },
+                    fontSize = if (roundOver) 14.sp else 12.sp,
                     maxLines = 1,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1385,14 +1426,14 @@ private fun PickerChip(isSelected: Boolean, name: String, onClick: () -> Unit, c
             )
             .border(
                 width = if (isSelected) 2.dp else 1.dp,
-                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.15f),
+                color = if (isSelected) MaterialTheme.colorScheme.primary else Ink.copy(alpha = 0.15f),
                 shape = CircleShape
             )
             .clickable(onClick = onClick)
             .semantics { contentDescription = name },
         contentAlignment = Alignment.Center
     ) {
-        content(if (isSelected) Color.White else Color.White.copy(alpha = 0.7f))
+        content(if (isSelected) Ink else Ink.copy(alpha = 0.7f))
     }
 }
 
@@ -1418,14 +1459,14 @@ private fun NoteValuePicker(selected: NoteLength, timeSignature: TimeSignature, 
                     )
                     .border(
                         width = if (isSelected) 2.dp else 1.dp,
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.15f),
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else Ink.copy(alpha = 0.15f),
                         shape = CircleShape
                     )
                     .clickable { onSelect(note) }
                     .semantics { contentDescription = name },
                 contentAlignment = Alignment.Center
             ) {
-                NoteGlyph(note, if (isSelected) Color.White else Color.White.copy(alpha = 0.7f), height = 28.dp)
+                NoteGlyph(note, if (isSelected) Ink else Ink.copy(alpha = 0.7f), height = 28.dp)
             }
         }
     }
@@ -1475,7 +1516,7 @@ private fun LessonPager(
                         .padding(horizontal = 3.dp)
                         .size(if (i == pagerState.currentPage) 7.dp else 5.dp)
                         .background(
-                            Color.White.copy(alpha = if (i == pagerState.currentPage) 0.9f else 0.3f),
+                            Ink.copy(alpha = if (i == pagerState.currentPage) 0.9f else 0.3f),
                             CircleShape
                         )
                 )
@@ -1527,8 +1568,8 @@ private const val HISTORY_SIZE = 15
 internal fun scoreColor(ratio: Float): Color {
     val off = kotlin.math.abs(ratio - 1f)
     return when {
-        off <= GOOD_WINDOW -> Color(0xFF66DD77)
-        off <= 0.3f -> Color(0xFFFFC857)
+        off <= GOOD_WINDOW -> Palette.pick(Color(0xFF66DD77), Color(0xFF1E9E48))
+        off <= 0.3f -> Palette.pick(Color(0xFFFFC857), Color(0xFFB7791F))
         else -> OverRed
     }
 }
@@ -1567,7 +1608,7 @@ private fun TimeSignaturePicker(selected: TimeSignature, onSelect: (TimeSignatur
             fontSize = 15.sp,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier
-                .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                .border(1.dp, Ink.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
                 .clickable { open = true }
                 .semantics { contentDescription = label }
                 .padding(horizontal = 10.dp, vertical = 4.dp)
@@ -1600,14 +1641,14 @@ private fun BarDots(timeSignature: TimeSignature, current: Int, modifier: Modifi
 
 /** Small "3/4" badge for lessons tied to a time signature. */
 @Composable
-fun MeterBadge(timeSignature: TimeSignature) {
+fun MeterBadge(timeSignature: TimeSignature, color: Color = Ink) {
     Text(
         timeSignature.label,
         fontSize = 12.sp,
-        color = Color.White.copy(alpha = 0.85f),
+        color = color.copy(alpha = 0.85f),
         modifier = Modifier
             .padding(start = 8.dp)
-            .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
+            .border(1.dp, color.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
             .padding(horizontal = 6.dp, vertical = 1.dp)
     )
 }

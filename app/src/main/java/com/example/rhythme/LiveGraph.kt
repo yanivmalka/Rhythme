@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import com.example.rhythme.ui.theme.Ink
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -74,7 +75,7 @@ fun LiveGraph(
 
         val low = h * 0.80f   // rest level, also the time axis
         val high = h * 0.18f  // note level
-        val axis = Color.White.copy(alpha = 0.28f)
+        val axis = Ink.copy(alpha = 0.28f)
         val thin = 1.dp.toPx()
 
         // Axes: time along the bottom, level at the start edge with a tick for "rest" and "note"
@@ -92,7 +93,7 @@ fun LiveGraph(
                 if (t > tMax) break
                 val barStart = Math.floorMod(k, beats.pulsesPerBar.toLong()) == 0L
                 drawLine(
-                    if (barStart) StarGold.copy(alpha = 0.75f) else Color.White.copy(alpha = 0.4f),
+                    if (barStart) StarGold.copy(alpha = 0.75f) else Ink.copy(alpha = 0.4f),
                     Offset(x(t), low),
                     Offset(x(t), low + (if (barStart) 8.dp else 4.dp).toPx()),
                     strokeWidth = thin
@@ -102,8 +103,8 @@ fun LiveGraph(
         }
 
         // The guide, pass 1: its notes as a soft background, then (pass 2, over the presses) its outline
-        val guideFill = Color.White.copy(alpha = 0.10f)
-        val guideColor = Color.White.copy(alpha = 0.55f)
+        val guideFill = Ink.copy(alpha = 0.10f)
+        val guideColor = Ink.copy(alpha = 0.55f)
         val guideStroke = 1.5.dp.toPx()
         fun drawGuide(outline: Boolean) {
             anchors.forEachIndexed { i, a ->
@@ -154,6 +155,6 @@ fun LiveGraph(
         drawGuide(outline = true)
 
         // "Now"
-        drawLine(Color.White.copy(alpha = 0.7f), Offset(x(t0), 0f), Offset(x(t0), h), strokeWidth = thin)
+        drawLine(Ink.copy(alpha = 0.7f), Offset(x(t0), 0f), Offset(x(t0), h), strokeWidth = thin)
     }
 }

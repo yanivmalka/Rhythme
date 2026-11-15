@@ -162,7 +162,7 @@ fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, hapticM
     fun preview() { // short preview of the current instrument and note
         audioManager.instrument = settings.instrument
         audioManager.frequency = PITCHES_HZ[settings.pitchIndex]
-        audioManager.toneLevel = settings.toneVolume / 100f
+        audioManager.toneLevel = volumeGain(settings.toneVolume)
         previewJob?.cancel()
         previewJob = scope.launch {
             audioManager.startTone(0.35f)
@@ -241,22 +241,22 @@ fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, hapticM
         )
 
         LevelSlider(R.string.volume_click, settings.clickVolume, { settings.clickVolume = it }) {
-            audioManager.playClick(settings.clickVolume / 100f, accent = 2)
+            audioManager.playClick(volumeGain(settings.clickVolume), accent = 2)
         }
 
         // A sound where the note ends and the rest begins, its loudness and its note
         SwitchRow(stringResource(R.string.rest_sound_title), settings.restSound) {
             settings.restSound = it
-            if (it) audioManager.playRestCue(settings.restPitch, settings.restVolume / 100f)
+            if (it) audioManager.playRestCue(settings.restPitch, volumeGain(settings.restVolume))
         }
         if (settings.restSound) {
             LevelSlider(R.string.volume_rest, settings.restVolume, { settings.restVolume = it }) {
-                audioManager.playRestCue(settings.restPitch, settings.restVolume / 100f)
+                audioManager.playRestCue(settings.restPitch, volumeGain(settings.restVolume))
             }
             PitchTitle(R.string.rest_pitch_title)
             PitchChips(settings.restPitch) {
                 settings.restPitch = it
-                audioManager.playRestCue(it, settings.restVolume / 100f)
+                audioManager.playRestCue(it, volumeGain(settings.restVolume))
             }
         }
 
@@ -275,19 +275,19 @@ fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, hapticM
         TouchSound.entries.forEach { sound ->
             ChoiceRow(stringResource(sound.nameRes), settings.touchSound == sound) {
                 settings.touchSound = sound
-                audioManager.playTouchSound(sound, settings.touchPitch, settings.touchVolume / 100f)
+                audioManager.playTouchSound(sound, settings.touchPitch, volumeGain(settings.touchVolume))
             }
         }
         if (settings.touchSound != TouchSound.OFF) {
             LevelSlider(R.string.volume_touch, settings.touchVolume, { settings.touchVolume = it }) {
-                audioManager.playTouchSound(settings.touchSound, settings.touchPitch, settings.touchVolume / 100f)
+                audioManager.playTouchSound(settings.touchSound, settings.touchPitch, volumeGain(settings.touchVolume))
             }
         }
         if (settings.touchSound != TouchSound.OFF && settings.touchSound != TouchSound.CLICK) {
             PitchTitle(R.string.touch_pitch_title)
             PitchChips(settings.touchPitch) {
                 settings.touchPitch = it
-                audioManager.playTouchSound(settings.touchSound, it, settings.touchVolume / 100f)
+                audioManager.playTouchSound(settings.touchSound, it, volumeGain(settings.touchVolume))
             }
         }
 
@@ -335,7 +335,7 @@ fun AboutScreen(updates: UpdateController, onBack: () -> Unit) {
     }
 }
 
-/** Loudness of one kind of sound: its name with the percent, and a slider (10%..150%). Letting go plays it. */
+/** Loudness of one kind of sound: its name with the level, and a slider (0..100). Letting go plays it. */
 @Composable
 private fun LevelSlider(@StringRes title: Int, value: Int, onChange: (Int) -> Unit, onRelease: () -> Unit) {
     Text(
@@ -346,10 +346,10 @@ private fun LevelSlider(@StringRes title: Int, value: Int, onChange: (Int) -> Un
     )
     Slider(
         value = value.toFloat(),
-        onValueChange = { onChange(((it + 5) / 10).toInt() * 10) },
+        onValueChange = { onChange(((it + 2.5f) / 5).toInt() * 5) },
         onValueChangeFinished = onRelease,
-        valueRange = 10f..150f,
-        steps = 13
+        valueRange = 0f..100f,
+        steps = 19
     )
 }
 

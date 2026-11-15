@@ -55,15 +55,15 @@ class HapticManager(context: Context) {
     /** Demo mode: one firm tap where each note of the guide starts. */
     fun cue() {
         if (holdActive) return
-        vibrate(45, 255)
+        vibrate(60, 255)
     }
 
     /** Demo mode: the player's own press, two quick light taps, unlike the guide's single firm one. */
     fun touch() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || holdActive) return
         vibrator.cancel()
-        val amp = if (hasAmplitudeControl) scaled(200) else 255
-        vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 14, 45, 14), intArrayOf(0, amp, 0, amp), -1))
+        val amp = if (hasAmplitudeControl) scaled(230) else 255
+        vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 28, 50, 28), intArrayOf(0, amp, 0, amp), -1))
     }
 
     /**
@@ -115,28 +115,37 @@ class HapticManager(context: Context) {
         for (i in 0 until steps) {
             val p = (i + 1f) / steps
             val ms = if (i == steps - 1) buzz - stepMs * (steps - 1) else stepMs // the last step takes the remainder
-            out += ms to scaled((20 + 235 * p * kotlin.math.sqrt(p)).toInt())
+            out += ms to scaled((70 + 185 * p).toInt()) // clearly felt from the start, full at the end
         }
         if (gap > 0) out += gap to 0
         return out
     }
 
-    /** One cycle on an on/off motor: short taps, far apart at first and closing in toward the end. */
+    /**
+     * One cycle on an on/off motor, which has one strength only: "weak to strong" is made with
+     * the share of time the motor is on. It starts as short buzzes with pauses and ends as an
+     * almost continuous buzz, so it feels as strong as a steady vibration by the end of the cycle.
+     */
     private fun pulseCycle(cycleMs: Long): List<Pair<Long, Int>> {
-        val on = 25L
-        val fastGap = 25L
-        val slowGap = (cycleMs / 4).coerceIn(60L, 260L)
         val out = ArrayList<Pair<Long, Int>>()
         var t = 0L
-        while (cycleMs - t >= on + fastGap) {
+        while (cycleMs - t >= 60) {
+            val p = t.toFloat() / cycleMs
+            val on = (35 + 85 * p).toLong().coerceAtMost(cycleMs - t - 15) // 35 ms buzzes growing to 120 ms
             out += on to 255
             t += on
-            val gap = (slowGap + (fastGap - slowGap) * t.toFloat() / cycleMs).toLong().coerceIn(fastGap, cycleMs - t)
+            val gap = (70 - 55 * p).toLong().coerceIn(15L, cycleMs - t)    // 70 ms pauses shrinking to 15 ms
             out += gap to 0
             t += gap
         }
-        if (out.isEmpty()) return listOf(cycleMs to 255) // too short for taps: one buzz
-        if (t < cycleMs) out[out.lastIndex] = (out.last().first + cycleMs - t) to 0
+        if (out.isEmpty()) return listOf(cycleMs to 255) // too short for a pattern: one buzz
+        val left = cycleMs - t
+        if (left > 25) { // fill the tail with a last buzz and a short breath before the cycle starts over
+            out += (left - 12) to 255
+            out += 12L to 0
+        } else if (left > 0) {
+            out[out.lastIndex] = (out.last().first + left) to 0
+        }
         return out
     }
 

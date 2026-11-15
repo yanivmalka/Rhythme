@@ -185,6 +185,8 @@ fun LessonCard(
         colors = CardDefaults.cardColors(
             containerColor = if (progress.stars == LessonProgress.MAX_STARS)
                 Color(0.2f, 0.6f, 0.3f, 1f)
+            else if (com.example.rhythme.ui.theme.Palette.light)
+                Color(0xFF2F5FA8) // the card's text is white: keep the card dark in the light theme too
             else
                 MaterialTheme.colorScheme.surfaceVariant
         )
@@ -208,7 +210,7 @@ fun LessonCard(
                             fontSize = 18.sp,
                             color = Color.White
                         )
-                        lesson.timeSignature?.let { MeterBadge(it) }
+                        lesson.timeSignature?.let { MeterBadge(it, Color.White) }
                     }
                     Text(
                         text = stringResource(lesson.descriptionRes),

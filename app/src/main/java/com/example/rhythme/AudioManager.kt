@@ -106,7 +106,7 @@ class AudioManager {
 
     /** [accent]: 0 normal, 1 medium, 2 strong (first beat of the bar). */
     fun playClick(volume: Float = 1f, accent: Int = 0) {
-        clickVolume = volume.coerceIn(0f, 1.5f)
+        clickVolume = volume.coerceIn(0f, 2f)
         clickAccent = accent.coerceIn(0, 2)
         clickRequested.set(true)
     }

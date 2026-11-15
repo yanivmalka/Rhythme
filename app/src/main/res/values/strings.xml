@@ -181,8 +181,12 @@
     <string name="scale_blues">Blues</string>
     <string name="rest_pitch_title">Pitch of the rest sound</string>
     <string name="touch_pitch_title">Pitch of your press sound</string>
-    <string name="volume_tone">Volume of the note: %1$d%%</string>
-    <string name="volume_click">Volume of the metronome: %1$d%%</string>
-    <string name="volume_rest">Volume of the rest sound: %1$d%%</string>
-    <string name="volume_touch">Volume of your press sound: %1$d%%</string>
+    <string name="volume_tone">Volume of the note: %1$d</string>
+    <string name="volume_click">Volume of the metronome: %1$d</string>
+    <string name="volume_rest">Volume of the rest sound: %1$d</string>
+    <string name="volume_touch">Volume of your press sound: %1$d</string>
+    <string name="session_summary">This round: %1$d holds · %2$d%% average accuracy</string>
+    <string name="session_great">Excellent! One more round will lock the rhythm in.</string>
+    <string name="session_good">Good progress. Another round and it will sit better.</string>
+    <string name="session_try">Every round helps. Try again, maybe a little slower.</string>
 </resources>

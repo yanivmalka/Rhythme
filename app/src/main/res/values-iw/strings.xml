@@ -177,8 +177,12 @@
     <string name="scale_blues">בלוז</string>
     <string name="rest_pitch_title">גובה צליל ההפסקה</string>
     <string name="touch_pitch_title">גובה צליל הלחיצה שלכם</string>
-    <string name="volume_tone">עוצמת התו: %1$d%%</string>
-    <string name="volume_click">עוצמת המטרונום: %1$d%%</string>
-    <string name="volume_rest">עוצמת צליל ההפסקה: %1$d%%</string>
-    <string name="volume_touch">עוצמת צליל הלחיצה שלכם: %1$d%%</string>
+    <string name="volume_tone">עוצמת התו: %1$d</string>
+    <string name="volume_click">עוצמת המטרונום: %1$d</string>
+    <string name="volume_rest">עוצמת צליל ההפסקה: %1$d</string>
+    <string name="volume_touch">עוצמת צליל הלחיצה שלכם: %1$d</string>
+    <string name="session_summary">בסיבוב הזה: %1$d החזקות · דיוק ממוצע %2$d%%</string>
+    <string name="session_great">מצוין! עוד סיבוב אחד יקבע את הקצב.</string>
+    <string name="session_good">התקדמות יפה. עוד סיבוב וזה יישב טוב יותר.</string>
+    <string name="session_try">כל סיבוב משפר. נסו שוב, אולי מעט לאט יותר.</string>
 </resources>
