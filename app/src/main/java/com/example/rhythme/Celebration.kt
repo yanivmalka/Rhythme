@@ -49,7 +49,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
-val StarGold = Color(0xFFFFC94D)
+val StarGold: Color get() = com.example.rhythme.ui.theme.Palette.pick(Color(0xFFFFC94D), Color(0xFFE09A00))
 
 /** Three stars, earned ones filled gold. */
 @Composable

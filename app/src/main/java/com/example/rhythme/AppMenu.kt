@@ -156,12 +156,13 @@ fun LanguageScreen(onBack: () -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, onBack: () -> Unit) {
+fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, hapticManager: HapticManager, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var previewJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     fun preview() { // short preview of the current instrument and note
         audioManager.instrument = settings.instrument
         audioManager.frequency = PITCHES_HZ[settings.pitchIndex]
+        audioManager.toneLevel = volumeGain(settings.toneVolume)
         previewJob?.cancel()
         previewJob = scope.launch {
             audioManager.startTone(0.35f)
@@ -189,19 +190,132 @@ fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, onBack:
             fontSize = 20.sp,
             modifier = Modifier.padding(top = 28.dp, bottom = 12.dp)
         )
-        val names = stringArrayResource(R.array.pitch_names)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            names.forEachIndexed { i, name ->
-                FilterChip(
-                    selected = settings.pitchIndex == i,
-                    onClick = {
-                        settings.pitchIndex = i
-                        preview()
-                    },
-                    label = { Text(name, fontSize = 18.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)) }
-                )
+        PitchChips(settings.pitchIndex) {
+            settings.pitchIndex = it
+            preview()
+        }
+
+        LevelSlider(R.string.volume_tone, settings.toneVolume, { settings.toneVolume = it }) { preview() }
+
+        // Successive notes can walk up and down a scale that starts on that note
+        Text(
+            stringResource(R.string.scale_title),
+            fontSize = 20.sp,
+            modifier = Modifier.padding(top = 28.dp)
+        )
+        Text(
+            stringResource(R.string.scale_hint),
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+        Scale.entries.forEach { scale ->
+            ChoiceRow(stringResource(scale.nameRes), settings.scale == scale) {
+                settings.scale = scale
+                // Hear it: once up the scale
+                audioManager.instrument = settings.instrument
+                previewJob?.cancel()
+                previewJob = scope.launch {
+                    try {
+                        for (step in scale.semitones.indices) {
+                            audioManager.frequency = scale.hz(PITCHES_HZ[settings.pitchIndex], step)
+                            audioManager.strike()
+                            audioManager.startTone(0.35f)
+                            delay(230)
+                        }
+                    } finally {
+                        audioManager.stopTone()
+                        audioManager.frequency = PITCHES_HZ[settings.pitchIndex]
+                    }
+                }
             }
         }
+
+        // The beat fades as the player locks in (off: the beat always plays)
+        SwitchRow(stringResource(R.string.beat_fade_title), settings.beatFade) { settings.beatFade = it }
+        Text(
+            stringResource(R.string.beat_fade_hint),
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 8.dp)
+        )
+
+        LevelSlider(R.string.volume_click, settings.clickVolume, { settings.clickVolume = it }) {
+            audioManager.playClick(volumeGain(settings.clickVolume), accent = 2)
+        }
+
+        // A sound where the note ends and the rest begins, its loudness and its note
+        SwitchRow(stringResource(R.string.rest_sound_title), settings.restSound) {
+            settings.restSound = it
+            if (it) audioManager.playRestCue(settings.restPitch, volumeGain(settings.restVolume))
+        }
+        if (settings.restSound) {
+            LevelSlider(R.string.volume_rest, settings.restVolume, { settings.restVolume = it }) {
+                audioManager.playRestCue(settings.restPitch, volumeGain(settings.restVolume))
+            }
+            PitchTitle(R.string.rest_pitch_title)
+            PitchChips(settings.restPitch) {
+                settings.restPitch = it
+                audioManager.playRestCue(it, volumeGain(settings.restVolume))
+            }
+        }
+
+        // Imitate mode: the sound of the player's own press
+        Text(
+            stringResource(R.string.touch_sound_title),
+            fontSize = 20.sp,
+            modifier = Modifier.padding(top = 28.dp)
+        )
+        Text(
+            stringResource(R.string.touch_sound_hint),
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+        TouchSound.entries.forEach { sound ->
+            ChoiceRow(stringResource(sound.nameRes), settings.touchSound == sound) {
+                settings.touchSound = sound
+                audioManager.playTouchSound(sound, settings.touchPitch, volumeGain(settings.touchVolume))
+            }
+        }
+        if (settings.touchSound != TouchSound.OFF) {
+            LevelSlider(R.string.volume_touch, settings.touchVolume, { settings.touchVolume = it }) {
+                audioManager.playTouchSound(settings.touchSound, settings.touchPitch, volumeGain(settings.touchVolume))
+            }
+        }
+        if (settings.touchSound != TouchSound.OFF && settings.touchSound != TouchSound.CLICK) {
+            PitchTitle(R.string.touch_pitch_title)
+            PitchChips(settings.touchPitch) {
+                settings.touchPitch = it
+                audioManager.playTouchSound(settings.touchSound, it, volumeGain(settings.touchVolume))
+            }
+        }
+
+        // Vibration strength
+        Text(
+            stringResource(R.string.vibration_strength_title, settings.vibrationStrength),
+            fontSize = 20.sp,
+            modifier = Modifier.padding(top = 28.dp)
+        )
+        if (hapticManager.hasAmplitudeControl) {
+            Slider(
+                value = settings.vibrationStrength.toFloat(),
+                onValueChange = { settings.vibrationStrength = ((it + 5) / 10).toInt() * 10 },
+                onValueChangeFinished = { // feel the chosen strength
+                    hapticManager.strength = settings.vibrationStrength / 100f
+                    hapticManager.vibrate(150, 255)
+                },
+                valueRange = 10f..100f,
+                steps = 8
+            )
+        } else {
+            Text(
+                stringResource(R.string.vibration_strength_fixed),
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -218,6 +332,68 @@ fun AboutScreen(updates: UpdateController, onBack: () -> Unit) {
         Text(stringResource(R.string.about_text), fontSize = 16.sp, lineHeight = 24.sp)
         Spacer(Modifier.height(32.dp))
         UpdateSection(updates)
+    }
+}
+
+/** Loudness of one kind of sound: its name with the level, and a slider (0..100). Letting go plays it. */
+@Composable
+private fun LevelSlider(@StringRes title: Int, value: Int, onChange: (Int) -> Unit, onRelease: () -> Unit) {
+    Text(
+        stringResource(title, value),
+        fontSize = 15.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 8.dp, top = 14.dp)
+    )
+    Slider(
+        value = value.toFloat(),
+        onValueChange = { onChange(((it + 2.5f) / 5).toInt() * 5) },
+        onValueChangeFinished = onRelease,
+        valueRange = 0f..100f,
+        steps = 19
+    )
+}
+
+/** Small heading over a row of pitch chips, saying which sound they tune. */
+@Composable
+private fun PitchTitle(@StringRes title: Int) {
+    Text(
+        stringResource(title),
+        fontSize = 15.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 8.dp, top = 14.dp, bottom = 8.dp)
+    )
+}
+
+/** The eight notes as chips; used for the held note and for the cue sounds. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PitchChips(selected: Int, onSelect: (Int) -> Unit) {
+    val names = stringArrayResource(R.array.pitch_names)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        names.forEachIndexed { i, name ->
+            FilterChip(
+                selected = selected == i,
+                onClick = { onSelect(i) },
+                label = { Text(name, fontSize = 18.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)) }
+            )
+        }
+    }
+}
+
+/** A setting that is on or off: label and switch; the whole row toggles it. */
+@Composable
+private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 28.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onChange(!checked) }
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Text(label, fontSize = 18.sp, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
 
