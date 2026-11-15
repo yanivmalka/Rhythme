@@ -86,7 +86,7 @@
     <string name="cd_menu">תפריט</string>
     <string name="menu_profile">פרופיל</string>
     <string name="menu_language">שפה</string>
-    <string name="menu_instrument">כלי ותו</string>
+    <string name="menu_instrument">צלילים ורטט</string>
     <string name="menu_about">אודות</string>
     <string name="profile_guest">אורח</string>
     <string name="profile_name_label">השם שלך</string>
@@ -175,4 +175,6 @@
     <string name="scale_minor">מינור</string>
     <string name="scale_pentatonic">פנטטוני</string>
     <string name="scale_blues">בלוז</string>
+    <string name="rest_pitch_title">גובה צליל ההפסקה</string>
+    <string name="touch_pitch_title">גובה צליל הלחיצה שלכם</string>
 </resources>

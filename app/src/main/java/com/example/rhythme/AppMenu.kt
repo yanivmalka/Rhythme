@@ -243,7 +243,7 @@ fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, hapticM
             if (it) audioManager.playRestCue(settings.restPitch)
         }
         if (settings.restSound) {
-            Spacer(Modifier.height(8.dp))
+            PitchTitle(R.string.rest_pitch_title)
             PitchChips(settings.restPitch) {
                 settings.restPitch = it
                 audioManager.playRestCue(it)
@@ -269,7 +269,7 @@ fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, hapticM
             }
         }
         if (settings.touchSound != TouchSound.OFF && settings.touchSound != TouchSound.CLICK) {
-            Spacer(Modifier.height(8.dp))
+            PitchTitle(R.string.touch_pitch_title)
             PitchChips(settings.touchPitch) {
                 settings.touchPitch = it
                 audioManager.playTouchSound(settings.touchSound, it)
@@ -318,6 +318,17 @@ fun AboutScreen(updates: UpdateController, onBack: () -> Unit) {
         Spacer(Modifier.height(32.dp))
         UpdateSection(updates)
     }
+}
+
+/** Small heading over a row of pitch chips, saying which sound they tune. */
+@Composable
+private fun PitchTitle(@StringRes title: Int) {
+    Text(
+        stringResource(title),
+        fontSize = 15.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 8.dp, top = 14.dp, bottom = 8.dp)
+    )
 }
 
 /** The eight notes as chips; used for the held note and for the cue sounds. */

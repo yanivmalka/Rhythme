@@ -88,7 +88,7 @@
     <string name="cd_menu">Menu</string>
     <string name="menu_profile">Profile</string>
     <string name="menu_language">Language</string>
-    <string name="menu_instrument">Instrument &amp; note</string>
+    <string name="menu_instrument">Sounds &amp; vibration</string>
     <string name="menu_about">About</string>
     <string name="profile_guest">Guest</string>
     <string name="profile_name_label">Your name</string>
@@ -179,4 +179,6 @@
     <string name="scale_minor">Minor</string>
     <string name="scale_pentatonic">Pentatonic</string>
     <string name="scale_blues">Blues</string>
+    <string name="rest_pitch_title">Pitch of the rest sound</string>
+    <string name="touch_pitch_title">Pitch of your press sound</string>
 </resources>
