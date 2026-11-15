@@ -55,6 +55,8 @@ class AudioManager {
     @Volatile var instrument = Instrument.PURE
     @Volatile private var toneOn = false
     @Volatile private var toneVolume = 0.3f
+    /** The player's volume choice for the held note and the demo's cue tone; 1 = normal. */
+    @Volatile var toneLevel = 1f
     private val clickRequested = AtomicBoolean(false)
     private val strikeRequested = AtomicBoolean(false)
     @Volatile private var clickVolume = 1f
@@ -104,7 +106,7 @@ class AudioManager {
 
     /** [accent]: 0 normal, 1 medium, 2 strong (first beat of the bar). */
     fun playClick(volume: Float = 1f, accent: Int = 0) {
-        clickVolume = volume.coerceIn(0f, 1f)
+        clickVolume = volume.coerceIn(0f, 1.5f)
         clickAccent = accent.coerceIn(0, 2)
         clickRequested.set(true)
     }
@@ -171,7 +173,7 @@ class AudioManager {
             val voice = instrument
             if (strikeRequested.getAndSet(false) || (on && !wasOn)) toneSamples = 0
             wasOn = on
-            val target = if (!on) 0f else if (voice.percussive) 0.45f else toneVolume
+            val target = if (!on) 0f else (if (voice.percussive) 0.45f else toneVolume) * toneLevel
             val weights = voice.weights
             for (i in 0 until chunkSize) {
                 gain += (target - gain).coerceIn(-rampStep, rampStep)

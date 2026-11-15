@@ -181,4 +181,8 @@
     <string name="scale_blues">Blues</string>
     <string name="rest_pitch_title">Pitch of the rest sound</string>
     <string name="touch_pitch_title">Pitch of your press sound</string>
+    <string name="volume_tone">Volume of the note: %1$d%%</string>
+    <string name="volume_click">Volume of the metronome: %1$d%%</string>
+    <string name="volume_rest">Volume of the rest sound: %1$d%%</string>
+    <string name="volume_touch">Volume of your press sound: %1$d%%</string>
 </resources>
