@@ -165,4 +165,14 @@
     <string name="beat_fade_hint">פעיל: המטרונום נחלש עם כל החזקה מדויקת, עד שאתם מחזיקים את הקצב לבד. כבוי: הוא מנגן תמיד.</string>
     <string name="vibration_strength_title">עוצמת הרטט: %1$d%%</string>
     <string name="vibration_strength_fixed">למנוע הרטט בטלפון הזה יש עוצמה אחת בלבד, ולכן אי אפשר לשנות אותה כאן.</string>
+    <string name="instrument_violin">כינור</string>
+    <string name="instrument_guitar">גיטרה</string>
+    <string name="instrument_drum">תוף</string>
+    <string name="scale_title">סולם</string>
+    <string name="scale_hint">כל תו חדש מנגן את הצעד הבא, במעלה הסולם ובחזרה, החל מהתו שנבחר למעלה.</string>
+    <string name="scale_none">תו אחד (בלי סולם)</string>
+    <string name="scale_major">מז׳ור</string>
+    <string name="scale_minor">מינור</string>
+    <string name="scale_pentatonic">פנטטוני</string>
+    <string name="scale_blues">בלוז</string>
 </resources>

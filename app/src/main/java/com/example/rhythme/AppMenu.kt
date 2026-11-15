@@ -194,6 +194,40 @@ fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, hapticM
             preview()
         }
 
+        // Successive notes can walk up and down a scale that starts on that note
+        Text(
+            stringResource(R.string.scale_title),
+            fontSize = 20.sp,
+            modifier = Modifier.padding(top = 28.dp)
+        )
+        Text(
+            stringResource(R.string.scale_hint),
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+        Scale.entries.forEach { scale ->
+            ChoiceRow(stringResource(scale.nameRes), settings.scale == scale) {
+                settings.scale = scale
+                // Hear it: once up the scale
+                audioManager.instrument = settings.instrument
+                previewJob?.cancel()
+                previewJob = scope.launch {
+                    try {
+                        for (step in scale.semitones.indices) {
+                            audioManager.frequency = scale.hz(PITCHES_HZ[settings.pitchIndex], step)
+                            audioManager.strike()
+                            audioManager.startTone(0.35f)
+                            delay(230)
+                        }
+                    } finally {
+                        audioManager.stopTone()
+                        audioManager.frequency = PITCHES_HZ[settings.pitchIndex]
+                    }
+                }
+            }
+        }
+
         // The beat fades as the player locks in (off: the beat always plays)
         SwitchRow(stringResource(R.string.beat_fade_title), settings.beatFade) { settings.beatFade = it }
         Text(

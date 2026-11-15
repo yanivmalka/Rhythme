@@ -122,6 +122,27 @@ private val ReleaseGreen = Color(0xFF34C759)
 private val OverRed = Color(0xFFFF6B6B)
 private val RestGray = Color(0xFF9AA4B2) // the ring while it counts a rest down
 
+/**
+ * What successive notes play: the same note every time, or one step after another up and
+ * down a scale that starts on the chosen note. [semitones] are counted from that note.
+ */
+enum class Scale(@StringRes val nameRes: Int, val semitones: IntArray) {
+    NONE(R.string.scale_none, intArrayOf(0)),
+    MAJOR(R.string.scale_major, intArrayOf(0, 2, 4, 5, 7, 9, 11, 12)),
+    MINOR(R.string.scale_minor, intArrayOf(0, 2, 3, 5, 7, 8, 10, 12)),
+    PENTATONIC(R.string.scale_pentatonic, intArrayOf(0, 2, 4, 7, 9, 12)),
+    BLUES(R.string.scale_blues, intArrayOf(0, 3, 5, 6, 7, 10, 12));
+
+    /** Pitch of the [step]-th note: up the scale, back down, and around again. */
+    fun hz(baseHz: Double, step: Int): Double {
+        if (semitones.size < 2) return baseHz
+        val period = 2 * (semitones.size - 1)
+        val i = step % period
+        val index = if (i < semitones.size) i else period - i
+        return baseHz * Math.pow(2.0, semitones[index] / 12.0)
+    }
+}
+
 /** Demo mode: the sound of the player's own press, to tell it from the guide's tone. */
 enum class TouchSound(@StringRes val nameRes: Int) {
     BELL(R.string.touch_sound_bell),
@@ -166,6 +187,7 @@ class PlaySettings(private val prefs: SharedPreferences) {
     private val touchPitchState = mutableIntStateOf(prefs.getInt("touch_pitch", DEFAULT_PITCH).coerceIn(PITCHES_HZ.indices))
     private val vibStrength = mutableIntStateOf(prefs.getInt("vibration_strength", 100).coerceIn(10, 100))
     private val fade = mutableStateOf(prefs.getBoolean("beat_fade", false))
+    private val scaleState = mutableStateOf(enumOr(prefs.getString("scale", null), Scale.NONE))
     private val touch = mutableStateOf(enumOr(prefs.getString("touch_sound", null), TouchSound.BELL))
     private val rest = mutableStateOf(NoteLength.entries.firstOrNull { it.name == prefs.getString("rest", null) })
 
@@ -189,6 +211,8 @@ class PlaySettings(private val prefs: SharedPreferences) {
     var vibrationStrength: Int get() = vibStrength.intValue; set(v) { vibStrength.intValue = v; prefs.edit().putInt("vibration_strength", v).apply() }
     /** The beat grows quieter as the player locks in, down to silence. Off: the beat always plays. */
     var beatFade: Boolean get() = fade.value; set(v) { fade.value = v; prefs.edit().putBoolean("beat_fade", v).apply() }
+    /** Successive notes walk up and down this scale ([Scale.NONE]: always the same note). */
+    var scale: Scale get() = scaleState.value; set(v) { scaleState.value = v; prefs.edit().putString("scale", v.name).apply() }
     /** Demo mode: the sound of the player's own press. */
     var touchSound: TouchSound get() = touch.value; set(v) { touch.value = v; prefs.edit().putString("touch_sound", v.name).apply() }
     /** Rest between notes; null = as long as the note itself. */
@@ -314,6 +338,9 @@ fun RhythmPlayScreen(
 
     val currentWindowMs by rememberUpdatedState(windowMs)
 
+    /** The stretch of the guide in force at [t] (a change may already be queued after it). */
+    fun guideAt(t: Long): GuideAnchor? = anchors.lastOrNull { it.at <= t }?.takeIf { it.active && t < it.until }
+
     /** Play: the beat, the guide and the graph start together at [t], on beat 1. */
     fun startPlaying(t: Long = SystemClock.uptimeMillis()) {
         lastActivityAt = t
@@ -355,7 +382,13 @@ fun RhythmPlayScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    LaunchedEffect(pitchIndex) { audioManager.frequency = PITCHES_HZ[pitchIndex] }
+    // Each new note takes the next step of the chosen scale (or stays on the one note)
+    val scaleStep = remember { intArrayOf(0) }
+    LaunchedEffect(pitchIndex, settings.scale) {
+        scaleStep[0] = 0
+        audioManager.frequency = PITCHES_HZ[pitchIndex]
+    }
+    fun nextNoteHz(): Double = settings.scale.hz(PITCHES_HZ[pitchIndex], scaleStep[0]++)
     LaunchedEffect(settings.instrument) { audioManager.instrument = settings.instrument }
     LaunchedEffect(settings.vibrationStrength) { hapticManager.strength = settings.vibrationStrength / 100f }
     LaunchedEffect(settings.beatFade) { clickVolume = 1f }
@@ -446,9 +479,14 @@ fun RhythmPlayScreen(
 
     // Hold feedback: within each cycle the tone starts soft and swells, then starts over
     LaunchedEffect(isHolding) {
+        var lap = 0
         while (isHolding) {
             withFrameMillis { }
             val p = (SystemClock.uptimeMillis() - startTime).toFloat() / currentTargetMs
+            if (p.toInt() != lap) { // a new cycle: struck and plucked instruments sound again
+                lap = p.toInt()
+                if (!demoMode) audioManager.strike()
+            }
             if (!demoMode) audioManager.updateVolume(0.05f + 0.45f * (p - floor(p))) // tone + click stays within range
         }
     }
@@ -458,14 +496,15 @@ fun RhythmPlayScreen(
         restChoice?.let { if (!timeSignature.fits(it)) restChoice = null }
     }
 
-    // While playing, any change to the rhythm (tempo, note, rest, meter, mode) carries on in
-    // the guide with the new values from here (from the next beat)
+    // While playing, a change to the rhythm (tempo, note, rest, meter, mode) never redraws the
+    // wave already on the graph: it takes over at the first new cycle past the drawn part
     LaunchedEffect(demoMode, targetMs, restMs, timeSignature) {
         if (!isPlaying) return@LaunchedEffect
         val t = SystemClock.uptimeMillis()
-        val nextBeat = (lastBeatAt + timeSignature.pulseMs(playBpm)).toLong()
         lastActivityAt = t
-        setAnchor(GuideAnchor(if (lastBeatAt > 0 && nextBeat - t < 2000) maxOf(t, nextBeat) else t, targetMs, restMs))
+        val drawnUntil = t + ((1f - GRAPH_NOW_AT) * windowMs).toLong()
+        val from = anchors.lastOrNull { it.at <= drawnUntil }?.takeIf { it.active }?.nextNoteStart(drawnUntil) ?: t
+        setAnchor(GuideAnchor(from, targetMs, restMs))
     }
     LaunchedEffect(demoMode) { // each mode starts with a clean slate
         lastResult = null
@@ -476,34 +515,46 @@ fun RhythmPlayScreen(
     // The guide: note, rest, note... on its own clock while playing, drawn behind the graph. In
     // demo mode the app also plays it: the opposite of the hold feedback, one short cue
     // (vibration, tone, flash) exactly where each note starts, and nothing in between.
-    val guide = anchors.lastOrNull()?.takeIf { it.active }
-    LaunchedEffect(guide, isPlaying) {
-        if (guide == null || !isPlaying) { // Stop silences the guide at once
+    val newestAnchor = anchors.lastOrNull()
+    LaunchedEffect(newestAnchor, isPlaying) {
+        if (newestAnchor == null || !isPlaying) { // Stop silences the guide at once
             guideRunning = false
             return@LaunchedEffect
         }
         guideRunning = true
         try {
-            var n = ((SystemClock.uptimeMillis() - guide.at + guide.cycleMs - 1) / guide.cycleMs).coerceAtLeast(0)
             while (true) {
-                delay(guide.at + n * guide.cycleMs - SystemClock.uptimeMillis())
+                // The next note start: in the stretch in force now, or the first note of the one queued after it
+                val t = SystemClock.uptimeMillis()
+                val current = guideAt(t)
+                val queued = anchors.firstOrNull { it.at > t && it.active }
+                var at = current?.nextNoteStart(t + 1) ?: Long.MAX_VALUE
+                var g = current
+                if (queued != null && queued.at <= at) {
+                    at = queued.at
+                    g = queued
+                }
+                if (g == null) break
+                delay(at - SystemClock.uptimeMillis())
+                val noteMs = g.noteMs
                 // Optional, in both modes: a sound where the guide's note ends and its rest begins
                 if (soundEnabled && settings.restSound) scope.launch {
-                    delay(guide.noteMs)
+                    delay(noteMs)
                     if (isPlaying) audioManager.playRestCue(settings.restPitch)
                 }
                 if (demoMode) {
                     if (vibrationEnabled) hapticManager.cue()
                     if (soundEnabled) {
+                        audioManager.frequency = nextNoteHz()
                         audioManager.startTone(0.4f)
-                        scope.launch { delay(minOf(90L, guide.noteMs)); audioManager.stopTone() }
+                        val blipMs = if (audioManager.instrument.percussive) noteMs else minOf(90L, noteMs)
+                        scope.launch { delay(blipMs); audioManager.stopTone() }
                     }
                     if (lightEnabled) scope.launch {
                         flash.snapTo(1f)
                         flash.animateTo(0f, animationSpec = tween(durationMillis = 350))
                     }
                 }
-                n++
             }
         } finally {
             guideRunning = false
@@ -515,7 +566,7 @@ fun RhythmPlayScreen(
      * guide's rest; otherwise the rest that starts when the player lets go.
      */
     fun restProgress(t: Long): Float {
-        val g = if (demoMode && guideRunning) guide else null
+        val g = if (demoMode && guideRunning) guideAt(t) else null
         return when {
             g != null -> {
                 val pos = if (t >= g.at) (t - g.at) % g.cycleMs else 0L
@@ -538,7 +589,7 @@ fun RhythmPlayScreen(
     val readout = remember {
         {
             val t = clock.longValue
-            val g = anchors.lastOrNull()?.takeIf { demoMode && guideRunning && it.active }
+            val g = if (demoMode && guideRunning) anchors.lastOrNull { it.at <= t }?.takeIf { it.active } else null
             when {
                 isHolding -> {
                     val held = (t - startTime).coerceAtLeast(0)
@@ -748,7 +799,10 @@ fun RhythmPlayScreen(
                                         touchFlash.snapTo(1f)
                                         touchFlash.animateTo(0f, animationSpec = tween(durationMillis = 400))
                                     }
-                                } else if (soundEnabled) audioManager.startTone(0.05f) // swells from here
+                                } else if (soundEnabled) {
+                                    audioManager.frequency = nextNoteHz()
+                                    audioManager.startTone(0.05f) // swells from here
+                                }
                                 startHoldHaptics(pressedAt)
 
                                 // Follow the finger until it lifts; leaving the pad doesn't cancel. The first
@@ -853,7 +907,7 @@ fun RhythmPlayScreen(
                                 // next note starts, so it is empty exactly when the next press is due.
                                 if (isPlaying) {
                                     restStartedAt = releaseTime
-                                    restEndsAt = anchors.lastOrNull()?.takeIf { it.active }
+                                    restEndsAt = guideAt(releaseTime)
                                         ?.nextNoteStart(releaseTime + currentRestMs / 4)
                                         ?: (releaseTime + currentRestMs)
                                 }
@@ -868,7 +922,7 @@ fun RhythmPlayScreen(
                                 // Also how far the press was from where the guide's note started
                                 // (nothing to compare with when this press itself started the guide)
                                 val onsetMs = if (pressStartedGuide) null else {
-                                    anchors.lastOrNull()?.takeIf { it.active }?.let { startTime - it.nearestNoteStart(startTime) }
+                                    guideAt(startTime)?.let { startTime - it.nearestNoteStart(startTime) }
                                 }
                                 val result = HoldResult(heldMs, currentTargetMs, accuracy, onsetMs)
                                 if (presses.isNotEmpty()) {
@@ -946,7 +1000,7 @@ fun RhythmPlayScreen(
                     var under: Color? = null  // the full ring as the previous lap left it
                     var noteFraction = 0f     // progress through the note, for lighting the pulse marks
                     var cap = StrokeCap.Round // a rest's countdown has a flat end, so it visibly reaches zero
-                    val g = if (demoMode && guideRunning) guide else null
+                    val g = if (demoMode && guideRunning) guideAt(t) else null
                     when {
                         g != null -> if (t >= g.at) {
                             val pos = (t - g.at) % g.cycleMs
@@ -1067,7 +1121,7 @@ fun RhythmPlayScreen(
                 val beatTicks = when {
                     isPlaying && lastBeatAt > 0 && beatInBar >= 0 ->
                         BeatTicks(lastBeatAt - beatInBar * pulseMs, pulseMs, timeSignature.pulsesPerBar)
-                    else -> anchors.lastOrNull()?.takeIf { it.active }
+                    else -> anchors.lastOrNull { it.active }
                         ?.let { BeatTicks(it.at.toDouble(), pulseMs, timeSignature.pulsesPerBar) }
                 }
                 LiveGraph(

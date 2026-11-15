@@ -169,4 +169,14 @@
     <string name="beat_fade_hint">On: the metronome grows quieter with every accurate hold, until you carry the rhythm alone. Off: it always plays.</string>
     <string name="vibration_strength_title">Vibration strength: %1$d%%</string>
     <string name="vibration_strength_fixed">This phone\'s motor has a single strength, so it cannot be changed here.</string>
+    <string name="instrument_violin">Violin</string>
+    <string name="instrument_guitar">Guitar</string>
+    <string name="instrument_drum">Drum</string>
+    <string name="scale_title">Scale</string>
+    <string name="scale_hint">Each new note plays the next step, up and down the scale, starting on the note above.</string>
+    <string name="scale_none">One note (no scale)</string>
+    <string name="scale_major">Major</string>
+    <string name="scale_minor">Minor</string>
+    <string name="scale_pentatonic">Pentatonic</string>
+    <string name="scale_blues">Blues</string>
 </resources>
