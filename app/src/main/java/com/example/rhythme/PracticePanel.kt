@@ -135,13 +135,18 @@ fun PracticePanel(
                     modifier = Modifier.padding(bottom = 14.dp)
                 )
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(shown.captionRes), fontSize = 20.sp, color = shown.color)
-                if (isPlaying) {
-                    Spacer(Modifier.width(20.dp))
-                    FilledIconButton(onClick = onStop, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Filled.Stop, stringResource(R.string.cd_stop), modifier = Modifier.size(28.dp))
+            // Two fixed halves that meet in the middle: Stop on one side of the midline, the changing
+            // caption on the other. Neither moves when the caption's text changes.
+            Row(modifier = Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f).padding(end = 10.dp), contentAlignment = Alignment.CenterEnd) {
+                    if (isPlaying) {
+                        FilledIconButton(onClick = onStop, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Filled.Stop, stringResource(R.string.cd_stop), modifier = Modifier.size(28.dp))
+                        }
                     }
+                }
+                Box(Modifier.weight(1f).padding(start = 10.dp), contentAlignment = Alignment.CenterStart) {
+                    Text(stringResource(shown.captionRes), fontSize = 20.sp, color = shown.color, maxLines = 1)
                 }
             }
 
