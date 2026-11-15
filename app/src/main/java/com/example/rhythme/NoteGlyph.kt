@@ -65,3 +65,59 @@ fun NoteGlyph(note: NoteLength, color: Color, modifier: Modifier = Modifier, hei
         }
     }
 }
+
+/**
+ * Draws the rest that lasts as long as [note], in standard notation. Like [NoteGlyph] it is
+ * drawn with vector paths and never mirrored in RTL.
+ */
+@Composable
+fun RestGlyph(note: NoteLength, color: Color, modifier: Modifier = Modifier, height: Dp = 32.dp) {
+    Canvas(modifier.size(width = height * 0.75f, height = height)) {
+        val w = size.width
+        val h = size.height
+        val cx = w * 0.42f
+        val stroke = w * 0.1f
+        var dotAt = Offset(cx + w * 0.38f, h * 0.44f)
+
+        when (note) {
+            NoteLength.WHOLE, NoteLength.HALF, NoteLength.DOTTED_HALF -> {
+                // A block on a staff line: hanging below it = whole rest, sitting on it = half rest
+                val lineY = h * 0.5f
+                val blockH = h * 0.13f
+                drawLine(color, Offset(cx - w * 0.38f, lineY), Offset(cx + w * 0.38f, lineY), strokeWidth = stroke * 0.5f)
+                val top = if (note == NoteLength.WHOLE) lineY else lineY - blockH
+                drawRect(color, Offset(cx - w * 0.22f, top), Size(w * 0.44f, blockH))
+                dotAt = Offset(cx + w * 0.38f, lineY - blockH * 0.5f)
+            }
+            NoteLength.QUARTER, NoteLength.DOTTED_QUARTER -> {
+                // The quarter rest's zigzag with a small hook at the bottom
+                val squiggle = Path().apply {
+                    moveTo(cx - w * 0.10f, h * 0.16f)
+                    lineTo(cx + w * 0.14f, h * 0.36f)
+                    lineTo(cx - w * 0.10f, h * 0.52f)
+                    lineTo(cx + w * 0.14f, h * 0.68f)
+                    cubicTo(cx - w * 0.20f, h * 0.60f, cx - w * 0.26f, h * 0.82f, cx + w * 0.04f, h * 0.86f)
+                }
+                drawPath(squiggle, color, style = Stroke(width = stroke, cap = StrokeCap.Round))
+            }
+            NoteLength.EIGHTH, NoteLength.SIXTEENTH -> {
+                // A slanted stem with one hook (eighth) or two (sixteenth), each ending in a dot
+                val top = Offset(cx + w * 0.20f, h * 0.26f)
+                val bottom = Offset(cx - w * 0.06f, h * 0.80f)
+                drawLine(color, top, bottom, strokeWidth = stroke, cap = StrokeCap.Round)
+                val hooks = if (note == NoteLength.SIXTEENTH) 2 else 1
+                for (i in 0 until hooks) {
+                    val f = i * 0.36f
+                    val on = Offset(top.x + (bottom.x - top.x) * f, top.y + (bottom.y - top.y) * f)
+                    val dot = Offset(on.x - w * 0.34f, on.y + h * 0.03f)
+                    drawLine(color, on, dot, strokeWidth = stroke * 0.7f, cap = StrokeCap.Round)
+                    drawCircle(color, radius = w * 0.085f, center = dot)
+                }
+            }
+        }
+
+        if (note == NoteLength.DOTTED_QUARTER || note == NoteLength.DOTTED_HALF) {
+            drawCircle(color, radius = w * 0.07f, center = dotAt)
+        }
+    }
+}

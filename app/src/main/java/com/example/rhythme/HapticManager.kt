@@ -34,113 +34,100 @@ class HapticManager(context: Context) {
     val hasAmplitudeControl: Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vibrator.hasAmplitudeControl()
 
-    private var pulseFrom = 0L
-    private var pulseUntil = 0L
     private var holdActive = false
-    private var holdGeneration = 0
 
-    /** Tap on each beat, longer when accented (beat 1 of the bar). Skipped during a hold: the hold pattern has its own ticks. */
+    /** Tap on each beat, longer when accented (beat 1 of the bar). Skipped during a hold: the hold pattern owns the motor. */
     fun tick(accent: Int = 0) {
-        if (holdActive || SystemClock.uptimeMillis() < pulseUntil) return
+        if (holdActive) return
         vibrate(tickMs(accent), 255)
     }
 
     private fun tickMs(accent: Int): Long = when (accent) { 2 -> 50L; 1 -> 35L; else -> 25L }
 
+    /** Demo mode: one firm tap where each note of the guide starts. */
+    fun cue() {
+        if (holdActive) return
+        vibrate(45, 255)
+    }
+
     /**
-     * Plays a hold as one waveform, so timing doesn't depend on the UI thread: a buzz with a
-     * gap + firm tick at each beat, a double-buzz release pulse at the target, a short silence,
-     * then a loop that keeps buzzing with beat ticks for as long as the hold lasts.
-     * [playFrom] > [startAt] rebuilds the rest of a hold already in progress (e.g. the tempo
-     * changed). All times are SystemClock.uptimeMillis().
+     * Plays a hold as one looping waveform, so timing doesn't depend on the UI thread. Every cycle
+     * of [cycleMs] (the note's length) starts weak and ends strong, then starts over: the same
+     * cycle as the ring, the pad's fill and the tone. Motors without amplitude control pulse
+     * slowly at first and faster toward the end instead.
+     * [playFrom] > [startAt] rejoins a hold already in progress (e.g. the tempo changed).
+     * All times are SystemClock.uptimeMillis().
      */
-    fun startHold(startAt: Long, targetMs: Long, beats: BeatGrid, playFrom: Long = startAt) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val step = 10L
-        val offset = playFrom - startAt          // how far into the hold this pattern starts
-        val t = targetMs - offset                // target, relative to playFrom (may be past)
-        val afterPulse = (t + 260).coerceAtLeast(0) // release pulse plus a short silence
-
-        // Beats from playFrom on (relative ms) with their accents
-        val interval = beats.intervalMs
-        val firstK = kotlin.math.ceil((playFrom - 70 - beats.origin) / interval).toLong()
-        val upcoming = (0 until 64).map { j ->
-            val k = firstK + j
-            (beats.origin + k * interval - playFrom).toLong() to beats.accentAt(k)
-        }
-        // The loop starts at the first beat gap after the pulse
-        val loopBeat = upcoming.indexOfFirst { it.first - BEAT_GAP_BEFORE >= afterPulse }.coerceAtLeast(0)
-        val loopStart = (upcoming[loopBeat].first - BEAT_GAP_BEFORE).coerceAtLeast(0)
-
-        // Part 1, played once: swelling buzz, beat gaps + ticks, release pulse
-        val grid = IntArray(((loopStart + step - 1) / step).toInt()) { i ->
-            40 + (80 * (i * step + offset).toFloat() / targetMs).toInt().coerceIn(0, 80)
-        }
-        fun set(from: Long, to: Long, amplitude: Int) {
-            if (grid.isEmpty() || to <= 0) return
-            for (i in (from / step).coerceAtLeast(0)..((to - 1) / step).coerceAtMost(grid.size - 1L)) {
-                grid[i.toInt()] = amplitude
-            }
-        }
-        for ((at, accent) in upcoming.take(loopBeat)) {
-            set(at - BEAT_GAP_BEFORE, at + BEAT_GAP_AFTER, 0) // gap around the beat...
-            set(at, at + tickMs(accent), 255)                 // ...with the tick in it
-        }
-        if (t + 190 > 0) { // pulse not over yet: gap, buzz, gap, buzz, silence
-            set(t - 60, t + 260, 0)
-            set(t, t + 60, 255)
-            set(t + 130, t + 190, 255)
-        }
-
-        // Part 2, repeated until release: one bar of buzz with a gap + (accented) tick per beat
-        val period = interval.toLong().coerceAtLeast(BEAT_GAP_BEFORE + BEAT_GAP_AFTER + step)
-        val loop = IntArray((period * beats.pulsesPerBar / step).toInt()) { i ->
-            val beatInLoop = (i * step / period).toInt()
-            val ms = i * step - beatInLoop * period
-            val tick = tickMs(upcoming[(loopBeat + beatInLoop).coerceAtMost(upcoming.lastIndex)].second)
-            when {
-                ms in BEAT_GAP_BEFORE until BEAT_GAP_BEFORE + tick -> 255 // the beat tick
-                ms < BEAT_GAP_BEFORE + BEAT_GAP_AFTER -> 0              // gap around it
-                else -> 120
-            }
-        }
-
+    fun startHold(startAt: Long, cycleMs: Long, playFrom: Long = startAt) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || cycleMs <= 0) return
+        val cycle = if (hasAmplitudeControl) rampCycle(cycleMs) else pulseCycle(cycleMs)
         val timings = mutableListOf<Long>()
         val amplitudes = mutableListOf<Int>()
-        fun encode(part: IntArray) { // run-length encode, never merging across the two parts
-            var first = true
-            for (a in part) {
-                if (!first && amplitudes.last() == a) timings[timings.lastIndex] += step
-                else { timings += step; amplitudes += a }
-                first = false
+
+        // Joining mid-cycle: the rest of the cycle in progress is played once...
+        val offset = Math.floorMod(playFrom - startAt, cycleMs)
+        if (offset > 0) {
+            var at = 0L
+            for ((ms, amplitude) in cycle) {
+                val end = at + ms
+                if (end > offset) {
+                    timings += end - maxOf(at, offset)
+                    amplitudes += amplitude
+                }
+                at = end
             }
         }
-        encode(grid)
+        // ...then whole cycles repeat until release
         val repeatFrom = timings.size
-        encode(loop)
+        for ((ms, amplitude) in cycle) {
+            timings += ms
+            amplitudes += amplitude
+        }
 
-        pulseFrom = startAt + targetMs
-        pulseUntil = startAt + targetMs + 190
         holdActive = true
-        holdGeneration++
         vibrator.cancel()
         vibrator.vibrate(VibrationEffect.createWaveform(timings.toLongArray(), amplitudes.toIntArray(), repeatFrom))
     }
 
-    /**
-     * Ends the hold. If the release lands during the release pulse, returns how long to wait
-     * before calling [stopHold] so the pulse isn't cut off; otherwise stops now and returns 0.
-     */
-    fun endHold(now: Long): Pair<Long, Int> {
-        holdActive = false
-        if (now in (pulseFrom - 60) until pulseUntil) return (pulseUntil - now) to holdGeneration
-        vibrator.cancel()
-        return 0L to holdGeneration
+    /** One cycle with amplitude control: a buzz that grows from faint to full, then a breath of silence. */
+    private fun rampCycle(cycleMs: Long): List<Pair<Long, Int>> {
+        val gap = (cycleMs / 8).coerceIn(10L, 40L).coerceAtMost(cycleMs / 2)
+        val buzz = cycleMs - gap
+        val steps = (buzz / 20).toInt().coerceIn(1, 60)
+        val stepMs = buzz / steps
+        val out = ArrayList<Pair<Long, Int>>(steps + 1)
+        for (i in 0 until steps) {
+            val p = (i + 1f) / steps
+            val ms = if (i == steps - 1) buzz - stepMs * (steps - 1) else stepMs // the last step takes the remainder
+            out += ms to (20 + 235 * p * kotlin.math.sqrt(p)).toInt().coerceIn(1, 255)
+        }
+        if (gap > 0) out += gap to 0
+        return out
     }
 
-    /** Delayed stop from [endHold]; ignored if a new hold has started since. */
-    fun stopHold(generation: Int) {
-        if (generation == holdGeneration && !holdActive) vibrator.cancel()
+    /** One cycle on an on/off motor: short taps, far apart at first and closing in toward the end. */
+    private fun pulseCycle(cycleMs: Long): List<Pair<Long, Int>> {
+        val on = 25L
+        val fastGap = 25L
+        val slowGap = (cycleMs / 4).coerceIn(60L, 260L)
+        val out = ArrayList<Pair<Long, Int>>()
+        var t = 0L
+        while (cycleMs - t >= on + fastGap) {
+            out += on to 255
+            t += on
+            val gap = (slowGap + (fastGap - slowGap) * t.toFloat() / cycleMs).toLong().coerceIn(fastGap, cycleMs - t)
+            out += gap to 0
+            t += gap
+        }
+        if (out.isEmpty()) return listOf(cycleMs to 255) // too short for taps: one buzz
+        if (t < cycleMs) out[out.lastIndex] = (out.last().first + cycleMs - t) to 0
+        return out
+    }
+
+    /** Ends the hold's vibration. */
+    fun endHold() {
+        holdActive = false
+        vibrator.cancel()
     }
 
     /** Celebration: three quick taps and a long one, rising like a fanfare. */
@@ -151,19 +138,8 @@ class HapticManager(context: Context) {
         vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 40, 70, 40, 70, 40, 90, 220), -1))
     }
 
-    private companion object {
-        const val BEAT_GAP_BEFORE = 90L
-        const val BEAT_GAP_AFTER = 70L
-        const val TICK_MS = 25L
-    }
-
     fun stop() {
         holdActive = false
         vibrator.cancel()
     }
-}
-
-/** Beat positions for a hold: beat k is at origin + k * intervalMs; origin is a downbeat (beat 1). */
-class BeatGrid(val origin: Double, val intervalMs: Double, val pulsesPerBar: Int, private val accents: IntArray) {
-    fun accentAt(k: Long): Int = accents[Math.floorMod(k, pulsesPerBar.toLong()).toInt()]
 }

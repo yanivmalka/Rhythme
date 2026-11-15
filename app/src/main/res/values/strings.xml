@@ -135,4 +135,23 @@
     <string name="update_failed">Couldn\'t reach the update server. Check the internet connection and try again.</string>
     <string name="update_install">Install</string>
     <string name="update_later">Later</string>
+
+    <!-- Synced cycle, demo mode, rests and the practice panel -->
+    <string name="seconds_2dp">%1$.2fs</string>
+    <string name="cd_mode_toggle">Switch between: you lead / imitate the app</string>
+    <string name="mode_follow">You lead</string>
+    <string name="mode_demo">Imitate</string>
+    <string name="hint_demo">The app plays the rhythm. Press and release along with it.</string>
+    <string name="imitate_hint">Press with the guide</string>
+    <string name="rest_label">Rest:</string>
+    <string name="rest_equal">Same as the note</string>
+    <string name="rest_of">Rest: %1$s</string>
+    <string name="panel_note">Note</string>
+    <string name="panel_rest">Rest</string>
+    <string name="too_long">Too long</string>
+    <string name="onset_on_time">right on time</string>
+    <string name="onset_late">%1$d ms late</string>
+    <string name="onset_early">%1$d ms early</string>
+    <string name="tip_late">You tend to come in late. Press a little sooner.</string>
+    <string name="tip_early">You tend to come in early. Wait for the cue.</string>
 </resources>

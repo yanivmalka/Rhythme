@@ -131,4 +131,23 @@
     <string name="update_failed">לא ניתן להגיע לשרת העדכונים. בדקו את החיבור לאינטרנט ונסו שוב.</string>
     <string name="update_install">התקנה</string>
     <string name="update_later">אחר כך</string>
+
+    <!-- Synced cycle, demo mode, rests and the practice panel -->
+    <string name="seconds_2dp">%1$.2f שנ׳</string>
+    <string name="cd_mode_toggle">מעבר בין: אתם מובילים / חיקוי האפליקציה</string>
+    <string name="mode_follow">אתם מובילים</string>
+    <string name="mode_demo">חיקוי</string>
+    <string name="hint_demo">האפליקציה מנגנת את הקצב. לחצו ושחררו יחד איתה.</string>
+    <string name="imitate_hint">לחצו עם ההדגמה</string>
+    <string name="rest_label">הפסקה:</string>
+    <string name="rest_equal">כאורך התו</string>
+    <string name="rest_of">הפסקה: %1$s</string>
+    <string name="panel_note">תו</string>
+    <string name="panel_rest">הפסקה</string>
+    <string name="too_long">ארוך מדי</string>
+    <string name="onset_on_time">בדיוק בזמן</string>
+    <string name="onset_late">איחור של %1$d מ״ש</string>
+    <string name="onset_early">הקדמה של %1$d מ״ש</string>
+    <string name="tip_late">אתם נוטים להיכנס באיחור. לחצו מעט מוקדם יותר.</string>
+    <string name="tip_early">אתם נוטים להקדים. חכו לסימן.</string>
 </resources>
