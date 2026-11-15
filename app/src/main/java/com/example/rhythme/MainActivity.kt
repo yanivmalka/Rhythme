@@ -100,7 +100,7 @@ class MainActivity : ComponentActivity() {
                                     when (screen.item) {
                                         MenuItem.PROFILE -> ProfileScreen(playSettings, progressManager, back)
                                         MenuItem.LANGUAGE -> LanguageScreen(back)
-                                        MenuItem.INSTRUMENT -> InstrumentScreen(playSettings, audioManager, back)
+                                        MenuItem.INSTRUMENT -> InstrumentScreen(playSettings, audioManager, hapticManager, back)
                                         MenuItem.ABOUT -> AboutScreen(updates, back)
                                     }
                                 }

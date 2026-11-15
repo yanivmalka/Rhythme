@@ -156,7 +156,7 @@ fun LanguageScreen(onBack: () -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, onBack: () -> Unit) {
+fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, hapticManager: HapticManager, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var previewJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     fun preview() { // short preview of the current instrument and note
@@ -189,41 +189,31 @@ fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, onBack:
             fontSize = 20.sp,
             modifier = Modifier.padding(top = 28.dp, bottom = 12.dp)
         )
-        val names = stringArrayResource(R.array.pitch_names)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            names.forEachIndexed { i, name ->
-                FilterChip(
-                    selected = settings.pitchIndex == i,
-                    onClick = {
-                        settings.pitchIndex = i
-                        preview()
-                    },
-                    label = { Text(name, fontSize = 18.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)) }
-                )
-            }
+        PitchChips(settings.pitchIndex) {
+            settings.pitchIndex = it
+            preview()
         }
 
-        // A sound where the note ends and the rest begins
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 28.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .clickable {
-                    settings.restSound = !settings.restSound
-                    if (settings.restSound) audioManager.playRestCue()
-                }
-                .padding(horizontal = 8.dp, vertical = 6.dp)
-        ) {
-            Text(stringResource(R.string.rest_sound_title), fontSize = 18.sp, modifier = Modifier.weight(1f))
-            Switch(
-                checked = settings.restSound,
-                onCheckedChange = {
-                    settings.restSound = it
-                    if (it) audioManager.playRestCue()
-                }
-            )
+        // The beat fades as the player locks in (off: the beat always plays)
+        SwitchRow(stringResource(R.string.beat_fade_title), settings.beatFade) { settings.beatFade = it }
+        Text(
+            stringResource(R.string.beat_fade_hint),
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 8.dp)
+        )
+
+        // A sound where the note ends and the rest begins, and its note
+        SwitchRow(stringResource(R.string.rest_sound_title), settings.restSound) {
+            settings.restSound = it
+            if (it) audioManager.playRestCue(settings.restPitch)
+        }
+        if (settings.restSound) {
+            Spacer(Modifier.height(8.dp))
+            PitchChips(settings.restPitch) {
+                settings.restPitch = it
+                audioManager.playRestCue(it)
+            }
         }
 
         // Imitate mode: the sound of the player's own press
@@ -241,10 +231,42 @@ fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, onBack:
         TouchSound.entries.forEach { sound ->
             ChoiceRow(stringResource(sound.nameRes), settings.touchSound == sound) {
                 settings.touchSound = sound
-                audioManager.frequency = PITCHES_HZ[settings.pitchIndex]
-                audioManager.playTouchSound(sound)
+                audioManager.playTouchSound(sound, settings.touchPitch)
             }
         }
+        if (settings.touchSound != TouchSound.OFF && settings.touchSound != TouchSound.CLICK) {
+            Spacer(Modifier.height(8.dp))
+            PitchChips(settings.touchPitch) {
+                settings.touchPitch = it
+                audioManager.playTouchSound(settings.touchSound, it)
+            }
+        }
+
+        // Vibration strength
+        Text(
+            stringResource(R.string.vibration_strength_title, settings.vibrationStrength),
+            fontSize = 20.sp,
+            modifier = Modifier.padding(top = 28.dp)
+        )
+        if (hapticManager.hasAmplitudeControl) {
+            Slider(
+                value = settings.vibrationStrength.toFloat(),
+                onValueChange = { settings.vibrationStrength = ((it + 5) / 10).toInt() * 10 },
+                onValueChangeFinished = { // feel the chosen strength
+                    hapticManager.strength = settings.vibrationStrength / 100f
+                    hapticManager.vibrate(150, 255)
+                },
+                valueRange = 10f..100f,
+                steps = 8
+            )
+        } else {
+            Text(
+                stringResource(R.string.vibration_strength_fixed),
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -261,6 +283,39 @@ fun AboutScreen(updates: UpdateController, onBack: () -> Unit) {
         Text(stringResource(R.string.about_text), fontSize = 16.sp, lineHeight = 24.sp)
         Spacer(Modifier.height(32.dp))
         UpdateSection(updates)
+    }
+}
+
+/** The eight notes as chips; used for the held note and for the cue sounds. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PitchChips(selected: Int, onSelect: (Int) -> Unit) {
+    val names = stringArrayResource(R.array.pitch_names)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        names.forEachIndexed { i, name ->
+            FilterChip(
+                selected = selected == i,
+                onClick = { onSelect(i) },
+                label = { Text(name, fontSize = 18.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)) }
+            )
+        }
+    }
+}
+
+/** A setting that is on or off: label and switch; the whole row toggles it. */
+@Composable
+private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 28.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onChange(!checked) }
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Text(label, fontSize = 18.sp, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
 

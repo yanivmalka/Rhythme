@@ -130,20 +130,24 @@ enum class TouchSound(@StringRes val nameRes: Int) {
     OFF(R.string.touch_sound_off)
 }
 
-/** Plays [sound] for a press ([release] = false) or, softer and lower, for letting go. */
-fun AudioManager.playTouchSound(sound: TouchSound, release: Boolean = false) {
+/**
+ * Plays [sound] for a press ([release] = false) or, softer and lower, for letting go.
+ * [pitchIndex] is the note chosen for it (see [PITCHES_HZ]); the bell rings an octave above.
+ */
+fun AudioManager.playTouchSound(sound: TouchSound, pitchIndex: Int, release: Boolean = false) {
     val level = if (release) 0.14 else 0.3
-    val up = if (release) 1.5 else 2.0 // above the held note's pitch, so it stands out from the guide
+    val hz = PITCHES_HZ[pitchIndex.coerceIn(PITCHES_HZ.indices)] * if (release) 1.5 else 2.0
     when (sound) {
-        TouchSound.BELL -> playChime(doubleArrayOf(frequency * up), level = level)
-        TouchSound.DOUBLE_BELL -> playChime(doubleArrayOf(frequency * up, frequency * up * 1.5), gapMs = 70, level = level)
+        TouchSound.BELL -> playChime(doubleArrayOf(hz), level = level)
+        TouchSound.DOUBLE_BELL -> playChime(doubleArrayOf(hz, hz * 1.5), gapMs = 70, level = level)
         TouchSound.CLICK -> playClick(if (release) 0.5f else 1f, accent = if (release) 0 else 2)
         TouchSound.OFF -> Unit
     }
 }
 
-/** A low, soft "dong" where a note ends and its rest begins. */
-fun AudioManager.playRestCue() = playChime(doubleArrayOf(frequency / 2), level = 0.3)
+/** A low, soft "dong" where a note ends and its rest begins, an octave below the chosen note. */
+fun AudioManager.playRestCue(pitchIndex: Int) =
+    playChime(doubleArrayOf(PITCHES_HZ[pitchIndex.coerceIn(PITCHES_HZ.indices)] / 2), level = 0.3)
 
 /** Player choices: shared by all screens and saved across app launches. */
 class PlaySettings(private val prefs: SharedPreferences) {
@@ -158,6 +162,10 @@ class PlaySettings(private val prefs: SharedPreferences) {
     private val click = mutableStateOf(prefs.getBoolean("beat_sound", true))
     private val demo = mutableStateOf(prefs.getBoolean("demo_mode", false))
     private val restCue = mutableStateOf(prefs.getBoolean("rest_sound", true))
+    private val restPitchState = mutableIntStateOf(prefs.getInt("rest_pitch", DEFAULT_PITCH).coerceIn(PITCHES_HZ.indices))
+    private val touchPitchState = mutableIntStateOf(prefs.getInt("touch_pitch", DEFAULT_PITCH).coerceIn(PITCHES_HZ.indices))
+    private val vibStrength = mutableIntStateOf(prefs.getInt("vibration_strength", 100).coerceIn(10, 100))
+    private val fade = mutableStateOf(prefs.getBoolean("beat_fade", false))
     private val touch = mutableStateOf(enumOr(prefs.getString("touch_sound", null), TouchSound.BELL))
     private val rest = mutableStateOf(NoteLength.entries.firstOrNull { it.name == prefs.getString("rest", null) })
 
@@ -174,6 +182,13 @@ class PlaySettings(private val prefs: SharedPreferences) {
     var demoMode: Boolean get() = demo.value; set(v) { demo.value = v; prefs.edit().putBoolean("demo_mode", v).apply() }
     /** A sound where the note ends and the rest begins. */
     var restSound: Boolean get() = restCue.value; set(v) { restCue.value = v; prefs.edit().putBoolean("rest_sound", v).apply() }
+    /** The note of the rest sound and of the press sound (indices into [PITCHES_HZ]). */
+    var restPitch: Int get() = restPitchState.intValue; set(v) { restPitchState.intValue = v; prefs.edit().putInt("rest_pitch", v).apply() }
+    var touchPitch: Int get() = touchPitchState.intValue; set(v) { touchPitchState.intValue = v; prefs.edit().putInt("touch_pitch", v).apply() }
+    /** Vibration strength in percent, 10..100 (motors with amplitude control only). */
+    var vibrationStrength: Int get() = vibStrength.intValue; set(v) { vibStrength.intValue = v; prefs.edit().putInt("vibration_strength", v).apply() }
+    /** The beat grows quieter as the player locks in, down to silence. Off: the beat always plays. */
+    var beatFade: Boolean get() = fade.value; set(v) { fade.value = v; prefs.edit().putBoolean("beat_fade", v).apply() }
     /** Demo mode: the sound of the player's own press. */
     var touchSound: TouchSound get() = touch.value; set(v) { touch.value = v; prefs.edit().putString("touch_sound", v.name).apply() }
     /** Rest between notes; null = as long as the note itself. */
@@ -342,6 +357,8 @@ fun RhythmPlayScreen(
 
     LaunchedEffect(pitchIndex) { audioManager.frequency = PITCHES_HZ[pitchIndex] }
     LaunchedEffect(settings.instrument) { audioManager.instrument = settings.instrument }
+    LaunchedEffect(settings.vibrationStrength) { hapticManager.strength = settings.vibrationStrength / 100f }
+    LaunchedEffect(settings.beatFade) { clickVolume = 1f }
 
     // Tempo applies once the slider / buttons rest; until then the old tempo keeps playing
     LaunchedEffect(pendingBpm) {
@@ -419,14 +436,6 @@ fun RhythmPlayScreen(
         stopPlaying()
     }
 
-    // The sound where the note ends and the rest begins (optional): while holding, it says "let go"
-    LaunchedEffect(isHolding) {
-        if (isHolding && !demoMode && soundEnabled && settings.restSound) {
-            delay(startTime + currentTargetMs - SystemClock.uptimeMillis())
-            audioManager.playRestCue()
-        }
-    }
-
     // The clock ticks once per frame while there is something to show
     LaunchedEffect(isPlaying, isHolding, stopAt) {
         while (isPlaying || isHolding || SystemClock.uptimeMillis() < stopAt) {
@@ -478,15 +487,16 @@ fun RhythmPlayScreen(
             var n = ((SystemClock.uptimeMillis() - guide.at + guide.cycleMs - 1) / guide.cycleMs).coerceAtLeast(0)
             while (true) {
                 delay(guide.at + n * guide.cycleMs - SystemClock.uptimeMillis())
+                // Optional, in both modes: a sound where the guide's note ends and its rest begins
+                if (soundEnabled && settings.restSound) scope.launch {
+                    delay(guide.noteMs)
+                    if (isPlaying) audioManager.playRestCue(settings.restPitch)
+                }
                 if (demoMode) {
                     if (vibrationEnabled) hapticManager.cue()
                     if (soundEnabled) {
                         audioManager.startTone(0.4f)
                         scope.launch { delay(minOf(90L, guide.noteMs)); audioManager.stopTone() }
-                        if (settings.restSound) scope.launch { // optional: where the note ends
-                            delay(guide.noteMs)
-                            if (isPlaying && demoMode) audioManager.playRestCue()
-                        }
                     }
                     if (lightEnabled) scope.launch {
                         flash.snapTo(1f)
@@ -732,7 +742,7 @@ fun RhythmPlayScreen(
                                     // The player's own press, told apart from the guide's cue by every
                                     // sense: a bell (not the tone), two light taps (not one firm one),
                                     // a gold rim (not the white flash)
-                                    if (soundEnabled) audioManager.playTouchSound(settings.touchSound)
+                                    if (soundEnabled) audioManager.playTouchSound(settings.touchSound, settings.touchPitch)
                                     if (vibrationEnabled) hapticManager.touch()
                                     if (lightEnabled) scope.launch {
                                         touchFlash.snapTo(1f)
@@ -848,7 +858,7 @@ fun RhythmPlayScreen(
                                         ?: (releaseTime + currentRestMs)
                                 }
                                 // Demo mode: a softer, lower version of the press sound marks the release
-                                if (demoMode && soundEnabled) audioManager.playTouchSound(settings.touchSound, release = true)
+                                if (demoMode && soundEnabled) audioManager.playTouchSound(settings.touchSound, settings.touchPitch, release = true)
 
                                 // The player gets it: let the hint go after a couple of holds
                                 holdsSinceHint++
@@ -868,8 +878,8 @@ fun RhythmPlayScreen(
                                 history.add(result)
                                 if (history.size > HISTORY_SIZE) history.removeAt(0)
 
-                                // On the beat and the right length: fade the click so they carry the rhythm
-                                if (isPlaying) {
+                                // Optional: on the beat and the right length, fade the click so they carry the rhythm
+                                if (isPlaying && settings.beatFade) {
                                     val good = accuracy >= 0.8f && pressOnsetError <= ONSET_TOLERANCE
                                     val next = if (good) clickVolume - 0.2f else clickVolume + 0.4f
                                     clickVolume = (next * 10).roundToInt().coerceIn(0, 10) / 10f // whole steps: reaches exactly 0
@@ -1115,7 +1125,10 @@ fun RhythmPlayScreen(
             restMs = restMs,
             demoMode = demoMode,
             isPlaying = isPlaying,
-            onStop = { stopPlaying() },
+            onStop = {
+                stopPlaying()
+                panelShown = false
+            },
             readout = readout,
             modifier = Modifier.align(Alignment.TopCenter)
         )

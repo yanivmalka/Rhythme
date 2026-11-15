@@ -16,13 +16,21 @@ class HapticManager(context: Context) {
         context.getSystemService(Vibrator::class.java)!!
     }
 
+    /**
+     * The player's choice of vibration strength, 0.1..1. It scales every vibration on motors
+     * with amplitude control; on/off-only motors always run at their one strength.
+     */
+    @Volatile var strength = 1f
+
+    private fun scaled(amplitude: Int): Int = (amplitude * strength).toInt().coerceIn(1, 255)
+
     fun vibrate(durationMs: Long, amplitude: Int = VibrationEffect.DEFAULT_AMPLITUDE) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // createOneShot throws on 0: valid values are DEFAULT_AMPLITUDE or 1..255
             val safeAmplitude = when {
-                amplitude == VibrationEffect.DEFAULT_AMPLITUDE -> amplitude
                 !vibrator.hasAmplitudeControl() -> VibrationEffect.DEFAULT_AMPLITUDE
-                else -> amplitude.coerceIn(1, 255)
+                amplitude == VibrationEffect.DEFAULT_AMPLITUDE -> if (strength < 1f) scaled(255) else amplitude
+                else -> scaled(amplitude)
             }
             val effect = VibrationEffect.createOneShot(durationMs, safeAmplitude)
             vibrator.cancel()
@@ -54,7 +62,8 @@ class HapticManager(context: Context) {
     fun touch() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || holdActive) return
         vibrator.cancel()
-        vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 14, 45, 14), -1))
+        val amp = if (hasAmplitudeControl) scaled(200) else 255
+        vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 14, 45, 14), intArrayOf(0, amp, 0, amp), -1))
     }
 
     /**
@@ -106,7 +115,7 @@ class HapticManager(context: Context) {
         for (i in 0 until steps) {
             val p = (i + 1f) / steps
             val ms = if (i == steps - 1) buzz - stepMs * (steps - 1) else stepMs // the last step takes the remainder
-            out += ms to (20 + 235 * p * kotlin.math.sqrt(p)).toInt().coerceIn(1, 255)
+            out += ms to scaled((20 + 235 * p * kotlin.math.sqrt(p)).toInt())
         }
         if (gap > 0) out += gap to 0
         return out

@@ -163,4 +163,10 @@
     <string name="touch_sound_double_bell">Double bell</string>
     <string name="touch_sound_click">Click</string>
     <string name="touch_sound_off">No sound</string>
+    <string name="free_play_title">Free play</string>
+    <string name="free_play_desc">No lesson: choose any tempo, note and rest</string>
+    <string name="beat_fade_title">Fade the beat as I lock in</string>
+    <string name="beat_fade_hint">On: the metronome grows quieter with every accurate hold, until you carry the rhythm alone. Off: it always plays.</string>
+    <string name="vibration_strength_title">Vibration strength: %1$d%%</string>
+    <string name="vibration_strength_fixed">This phone\'s motor has a single strength, so it cannot be changed here.</string>
 </resources>

@@ -8,7 +8,7 @@ import android.os.Process
 import android.util.Log
 import androidx.annotation.StringRes
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.PI
 import kotlin.math.exp
 import kotlin.math.sin
@@ -39,7 +39,7 @@ class AudioManager {
     @Volatile private var toneVolume = 0.3f
     private val clickRequested = AtomicBoolean(false)
     @Volatile private var clickVolume = 1f
-    private val chimeRequested = AtomicReference<FloatArray?>(null)
+    private val chimeRequests = ConcurrentLinkedQueue<FloatArray>() // each one rings out in full, mixed with the others
     @Volatile private var running = false
     private var thread: Thread? = null
 
@@ -86,8 +86,9 @@ class AudioManager {
     }
 
     /**
-     * Rising bell arpeggio for celebrations: notes start [gapMs] apart and ring out,
-     * overlapping. Rendered here once, then mixed by the audio thread.
+     * Bell notes (a rising arpeggio for celebrations, single notes for cues): they start [gapMs]
+     * apart and ring out, overlapping. Rendered here once, then mixed by the audio thread.
+     * A new chime never cuts off one that is still ringing.
      */
     fun playChime(frequencies: DoubleArray, gapMs: Int = 110, level: Double = 0.22) {
         val ringMs = 600
@@ -101,7 +102,7 @@ class AudioManager {
                 out[start + i] += (bell * exp(-t * 6) * level).toFloat()
             }
         }
-        chimeRequested.set(out)
+        chimeRequests.add(out)
     }
 
     fun release() {
@@ -128,12 +129,17 @@ class AudioManager {
         var toneSamples = 0 // since the current note started (piano envelope)
         var click = clicks[0]
         var clickPos = click.size
-        var chime: FloatArray? = null
-        var chimePos = 0
+        val chimes = ArrayList<FloatArray>() // bells ringing now, each with its own position
+        val chimePos = ArrayList<Int>()
 
         while (running) {
             if (clickRequested.getAndSet(false)) { click = clicks[clickAccent]; clickPos = 0 }
-            chimeRequested.getAndSet(null)?.let { chime = it; chimePos = 0 }
+            while (true) {
+                val request = chimeRequests.poll() ?: break
+                if (chimes.size >= 8) { chimes.removeAt(0); chimePos.removeAt(0) } // far more than ever overlap
+                chimes.add(request)
+                chimePos.add(0)
+            }
             val phaseStep = 2.0 * PI * frequency / sampleRate
             val clickGain = clickVolume
             val on = toneOn
@@ -155,8 +161,17 @@ class AudioManager {
                 phase += phaseStep
                 if (phase > 2.0 * PI) phase -= 2.0 * PI
                 if (clickPos < click.size) s += click[clickPos++] * clickGain
-                chime?.let { c -> if (chimePos < c.size) s += c[chimePos++] else chime = null }
+                for (c in chimes.indices) {
+                    val pos = chimePos[c]
+                    if (pos < chimes[c].size) {
+                        s += chimes[c][pos]
+                        chimePos[c] = pos + 1
+                    }
+                }
                 buffer[i] = (s.coerceIn(-1f, 1f) * Short.MAX_VALUE).toInt().toShort()
+            }
+            for (c in chimes.indices.reversed()) { // drop the bells that have rung out
+                if (chimePos[c] >= chimes[c].size) { chimes.removeAt(c); chimePos.removeAt(c) }
             }
             track.write(buffer, 0, chunkSize) // blocks, pacing the loop
         }
