@@ -186,4 +186,46 @@
     <string name="session_good">התקדמות יפה. עוד סיבוב וזה יישב טוב יותר.</string>
     <string name="session_try">כל סיבוב משפר. נסו שוב, אולי מעט לאט יותר.</string>
     <string name="about_credits">צלילי הפסנתר, הגיטרה, הכינור, הקלרינט והתוף: הקלטות מתוך FluidR3_GM soundfont מאת Frank Wen (דרך gleitz/midi-js-soundfonts), ברישיון Creative Commons Attribution 3.0, שקוצרו והותאמו ללולאה עבור האפליקציה.</string>
+
+    <!-- שני שחקנים -->
+    <string name="tp_title">שני שחקנים</string>
+    <string name="tp_card_desc">פנים מול פנים בטלפון אחד: נקודות, רצפים וכישורים</string>
+    <string name="tp_how">הניחו את הטלפון שטוח ביניכם. כל שחקן מקבל חצי מהמסך ומנגן את אותו קצב על הפעמה המשותפת.</string>
+    <string name="tp_player_1">שחקן 1</string>
+    <string name="tp_player_2">שחקן 2</string>
+    <string name="tp_skills_pick">כישורים: בחרו 2</string>
+    <string name="tp_skill_fog">ערפל</string>
+    <string name="tp_skill_fog_desc">מסתיר מהשחקן השני את הטבעת, המדריך והאור ל-4 פעמות</string>
+    <string name="tp_skill_freeze">הקפאה</string>
+    <string name="tp_skill_freeze_desc">עוצר לשחקן השני את בונוס הרצף ל-4 פעמות</string>
+    <string name="tp_skill_shield">מגן</string>
+    <string name="tp_skill_shield_desc">חוסם את הכישור הבא שנשלח אליך</string>
+    <string name="tp_rhythm">קצב</string>
+    <string name="tp_slower">לאט יותר</string>
+    <string name="tp_faster">מהר יותר</string>
+    <string name="tp_rounds">%1$d סיבובים</string>
+    <string name="tp_points_help">פתיחה מושלמת 100 · טובה 50 · אורך נכון ‎+50. ‏8, 16 ו-32 תווים טובים ברצף: ×2, ×3, ×4. כל 8 תווים מושלמים טוענים כישור. תווים שמנוגנים בערפל, בתחושה בלבד, שווים כפול.</string>
+    <string name="tp_start">התחלה</string>
+    <string name="tp_cd_pad">המשטח של %1$s: לחצו והחזיקו</string>
+    <string name="tp_fog_label">ערפל\nנגנו בתחושה</string>
+    <string name="tp_frozen">קפוא</string>
+    <string name="tp_shield_up">מגן מורם</string>
+    <string name="tp_ready">%1$s מוכן</string>
+    <string name="tp_perfect">מושלם</string>
+    <string name="tp_good">טוב</string>
+    <string name="tp_early">מוקדם</string>
+    <string name="tp_late">מאוחר</string>
+    <string name="tp_miss">פספוס</string>
+    <string name="tp_blocked">נחסם!</string>
+    <string name="tp_stop">עצירה</string>
+    <string name="tp_wins">הניצחון של %1$s!</string>
+    <string name="tp_tie">תיקו!</string>
+    <string name="tp_by_points">בהפרש של %1$d נקודות</string>
+    <string name="tp_stat_missed">פספוסים</string>
+    <string name="tp_stat_combo">רצף שיא</string>
+    <string name="tp_stat_skills">כישורים שהופעלו</string>
+    <string name="tp_stat_blocked">נחסמו</string>
+    <string name="tp_rematch">משחק חוזר</string>
+    <string name="tp_change">שינוי הגדרות</string>
+    <string name="tp_done">סיום</string>
 </resources>

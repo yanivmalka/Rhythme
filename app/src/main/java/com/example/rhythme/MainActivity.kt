@@ -93,7 +93,16 @@ class MainActivity : ComponentActivity() {
                                     LessonScreen(
                                         progressManager,
                                         onLessonSelected = { lesson -> goPlay(Screen.Play(lesson)) },
-                                        onBack = { goPlay(Screen.Play(null)) }
+                                        onBack = { goPlay(Screen.Play(null)) },
+                                        onTwoPlayers = { currentScreen = Screen.TwoPlayers }
+                                    )
+                                }
+                                is Screen.TwoPlayers -> {
+                                    TwoPlayerScreen(
+                                        playSettings,
+                                        hapticManager,
+                                        audioManager,
+                                        onBack = { currentScreen = Screen.Lessons }
                                     )
                                 }
                                 is Screen.Menu -> {
@@ -136,5 +145,6 @@ class MainActivity : ComponentActivity() {
 sealed class Screen {
     data class Play(val lesson: Lesson?) : Screen()
     object Lessons : Screen()
+    object TwoPlayers : Screen()
     data class Menu(val item: MenuItem) : Screen()
 }

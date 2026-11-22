@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.*
@@ -27,7 +28,8 @@ import kotlinx.coroutines.launch
 fun LessonScreen(
     progressManager: ProgressManager,
     onLessonSelected: (Lesson) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onTwoPlayers: () -> Unit = {}
 ) {
     var allProgress by remember { mutableStateOf(progressManager.getAllProgress()) }
     fun refresh() { allProgress = progressManager.getAllProgress() }
@@ -94,6 +96,27 @@ fun LessonScreen(
                                 Text(stringResource(R.string.free_play_title), fontSize = 20.sp)
                                 Text(
                                     stringResource(R.string.free_play_desc),
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+                // Second: play against a friend on the same phone
+                item(key = "two_players") {
+                    Card(
+                        onClick = onTwoPlayers,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF2A65A).copy(alpha = 0.22f))
+                    ) {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Groups, contentDescription = null, tint = Color(0xFFF2A65A))
+                            Spacer(Modifier.width(14.dp))
+                            Column {
+                                Text(stringResource(R.string.tp_title), fontSize = 20.sp)
+                                Text(
+                                    stringResource(R.string.tp_card_desc),
                                     fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
