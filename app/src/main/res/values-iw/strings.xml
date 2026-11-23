@@ -228,4 +228,7 @@
     <string name="tp_rematch">משחק חוזר</string>
     <string name="tp_change">שינוי הגדרות</string>
     <string name="tp_done">סיום</string>
+    <string name="tp_short">קצר מדי</string>
+    <string name="tp_tempo_rises">הקצב עולה כששניכם מנגנים טוב</string>
+    <string name="tp_scale">כל תו חדש עולה בסולם</string>
 </resources>

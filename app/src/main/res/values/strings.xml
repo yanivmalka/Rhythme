@@ -232,4 +232,7 @@
     <string name="tp_rematch">Rematch</string>
     <string name="tp_change">Change setup</string>
     <string name="tp_done">Done</string>
+    <string name="tp_short">Too short</string>
+    <string name="tp_tempo_rises">Tempo rises when you both play well</string>
+    <string name="tp_scale">Each new note walks up the scale</string>
 </resources>

@@ -131,6 +131,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         audioManager.stopTone()
+        audioManager.stopTone2()
         audioManager.stop()
     }
 
