@@ -100,6 +100,7 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -122,7 +123,7 @@ private const val COUNT_IN_BARS = 2
 private const val VERDICT_MS = 900L         // how long "Perfect", "+150" etc. stay on screen
 private const val TEMPO_UP_SHARE = 0.75f    // both players together this good in a round: the next one is faster
 private const val TEMPO_DOWN_SHARE = 0.4f   // ...this weak: slower again (never below the starting tempo)
-private const val P2_SEMITONES = -5         // the second player's notes sound a fourth lower
+private const val P2_SEMITONES = 0          // both players play the same note (each on their own sound)
 private const val SURPRISE_CHANCE = 0.2f    // share of the guide's notes that carry a surprise
 private const val COIN_POINTS = 50          // each coin is worth more than the one before: 50, 100, 150...
 private const val BOLT_CHARGE = 3           // a bolt charges the skills by this many perfect notes
@@ -254,6 +255,7 @@ class TwoPlayer(
     internal var landLow = false
     internal var runTo = 0L    // after a slip: the foot of the wave he runs to and climbs; 0 = none
     internal var standAt = 0L  // ...and where he stands on top of it
+    internal var runMs = RUN_MS
     internal var move by mutableStateOf(ManMove.NONE)
     internal var moveAt by mutableLongStateOf(0L)
     internal var pendingCollect = -1 // the surprise he picks up once he has climbed
@@ -324,6 +326,7 @@ private class Schedule(val total: Int, val countInStart: Long, first: RoundTimin
     fun round(k: Int): RoundTiming = rounds[minOf(k.coerceAtLeast(0) / NOTES_PER_ROUND, rounds.lastIndex)]
 
     fun noteStart(k: Int): Long {
+        if (k < 0) return rounds[0].start + k * rounds[0].cycleMs // the count-in's waves
         val r = k / NOTES_PER_ROUND
         if (r < rounds.size) return rounds[r].start + (k % NOTES_PER_ROUND) * rounds[r].cycleMs
         val last = rounds.last()
@@ -382,7 +385,8 @@ fun TwoPlayerScreen(
         listOf(
             TwoPlayer(0, name1, P1Blue, listOf(Skill.FOG, Skill.SHIELD), first,
                 if (settings.scale == Scale.NONE) Scale.MAJOR else settings.scale),
-            TwoPlayer(1, name2, P2Orange, listOf(Skill.FOG, Skill.FREEZE), second, Scale.PENTATONIC)
+            TwoPlayer(1, name2, P2Orange, listOf(Skill.FOG, Skill.FREEZE), second,
+                if (settings.scale == Scale.NONE) Scale.MAJOR else settings.scale) // the scale is shared
         )
     }
     var stage by remember { mutableStateOf(Stage.SETUP) }
@@ -549,12 +553,6 @@ private fun TwoPlayerSetup(
                             )
                         }
                     }
-                    SetupLabel(R.string.tp_player_scale)
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Scale.entries.forEach { s ->
-                            FilterChip(selected = s == p.scale, onClick = { p.scale = s }, label = { Text(stringResource(s.nameRes)) })
-                        }
-                    }
                     SetupLabel(R.string.tp_skills_pick)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Skill.entries.forEach { skill ->
@@ -609,6 +607,17 @@ private fun TwoPlayerSetup(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.tp_tempo_rises), fontSize = 15.sp, modifier = Modifier.weight(1f))
                 Switch(checked = tempoRises, onCheckedChange = onTempoRises)
+            }
+            // One scale for both: they play the same notes, each on their own sound
+            SetupLabel(R.string.tp_player_scale)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Scale.entries.forEach { sc ->
+                    FilterChip(
+                        selected = sc == players[0].scale,
+                        onClick = { players.forEach { it.scale = sc } },
+                        label = { Text(stringResource(sc.nameRes)) }
+                    )
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(3, 5, 7).forEach { r ->
@@ -698,13 +707,15 @@ private fun TwoPlayerGame(
         audio.instrument2 = players[1].instrument
     }
 
-    fun holdSoundOn(p: TwoPlayer) {
+    /** The note of guide note [k]: the same step of the shared scale for both players. */
+    fun holdSoundOn(p: TwoPlayer, k: Int) {
         if (!settings.soundEnabled) return
+        val step = k.coerceAtLeast(0)
         if (p.index == 0) {
-            audio.frequency = p.scale.hz(base1, p.scaleStep++)
+            audio.frequency = players[0].scale.hz(base1, step)
             audio.startTone(0.05f)
         } else {
-            audio.frequency2 = p.scale.hz(base2, p.scaleStep++)
+            audio.frequency2 = players[0].scale.hz(base2, step)
             audio.startTone2(0.05f)
         }
     }
@@ -800,6 +811,7 @@ private fun TwoPlayerGame(
                 p.runTo = schedule.noteStart(next)
                 p.standAt = p.runTo + schedule.noteMs(next) / 4
                 p.pendingCollect = next
+                p.runMs = RUN_MS
                 p.pendingCollectAt = t + JUMP_MS + SLIP_MS + RUN_MS + CLIMB_MS
             } else {
                 p.runTo = 0L
@@ -814,7 +826,7 @@ private fun TwoPlayerGame(
         p.jumpAt = t
         p.move = ManMove.NONE
 
-        holdSoundOn(p)
+        holdSoundOn(p, k)
         holdVibration(t)
     }
 
@@ -921,6 +933,48 @@ private fun TwoPlayerGame(
         schedule.rounds.add(RoundTiming(rt.end, next, note.durationMs(next), ts.pulseMs(next)))
     }
 
+    // The man is on the waves from the start: he drops onto the first count-in wave ahead
+    LaunchedEffect(Unit) {
+        val k0 = schedule.indexAt(startAt) + 1
+        players.forEach { p ->
+            p.jump = Jump.ENTER
+            p.landAt = schedule.noteStart(k0) + schedule.noteMs(k0) / 3
+            p.landLow = false
+            p.fromAt = p.landAt - schedule.noteMs(k0) * 0.4
+            p.fromLevel = -0.9f
+            p.runTo = 0L
+            p.jumpAt = startAt
+        }
+    }
+
+    /**
+     * Nobody pressed and the man's wave is about to leave the screen: he slides down its end and
+     * runs to one of the next waves (the next one, or two or three on, at random) and climbs it.
+     */
+    val idleRnd = remember { java.util.Random(startAt + 1) }
+    fun idleMove(p: TwoPlayer, t: Long) {
+        if (p.pressAt > 0L || p.jumpAt == 0L) return
+        val pose = manPose(p, t) ?: return
+        if (pose.shape != ManShape.STAND) return
+        val window = schedule.round(schedule.indexAt(t).coerceAtLeast(0)).cycleMs * 4.0
+        if (t - pose.at < 0.48 * window) return // still well on screen
+        val n = schedule.indexAt(pose.at.toLong()) // the wave under him
+        val target = n + 1 + idleRnd.nextInt(3)
+        if (target >= total) return // no wave left: he rides off with this one
+        val waveEnd = schedule.noteStart(n) + schedule.noteMs(n)
+        p.fromAt = pose.at
+        p.fromLevel = pose.level
+        p.landAt = maxOf(waveEnd, pose.at.toLong() + 1)
+        p.landLow = true
+        p.runTo = schedule.noteStart(target)
+        p.standAt = p.runTo + schedule.noteMs(target) / 4
+        p.runMs = ((p.runTo - p.landAt) / 2).coerceIn(RUN_MS, 1500L) // a longer way takes longer
+        p.jump = Jump.SLIP
+        p.move = ManMove.NONE
+        p.pendingCollect = -1 // what he reaches without a press isn't his
+        p.jumpAt = t
+    }
+
     // The clock: one value per frame for everything drawn. Held notes swell within each cycle
     // and sound again at each new cycle, like on the main play screen.
     LaunchedEffect(Unit) {
@@ -940,6 +994,7 @@ private fun TwoPlayerGame(
                 } else {
                     lap[p.index] = 0
                 }
+                idleMove(p, now)
                 // After a slip, the surprise on the wave he climbs is his once he is up
                 if (p.pendingCollect >= 0 && now >= p.pendingCollectAt) {
                     val k = p.pendingCollect
@@ -1315,13 +1370,25 @@ private fun WaveGraph(
             }
         }
 
-        val from = (k - 4).coerceAtLeast(0)
+        val from = k - 4
         val to = (k + 4).coerceAtMost(schedule.total - 1)
         if (!fogged) {
-            // The guide
+            // The guide, and before it the count-in's waves (fainter)
+            val countIn = Path()
             val path = Path()
             path.moveTo(0f, low)
+            countIn.moveTo(0f, low)
             for (n in from..to) {
+                if (n < 0) {
+                    val s = schedule.noteStart(n)
+                    val e = s + schedule.noteMs(n)
+                    if (x(e) < 0f || x(s) > size.width) continue
+                    countIn.lineTo(x(s), low)
+                    countIn.lineTo(x(s), high)
+                    countIn.lineTo(x(e), high)
+                    countIn.lineTo(x(e), low)
+                    continue
+                }
                 val s = schedule.noteStart(n)
                 val e = s + schedule.noteMs(n)
                 if (x(e) < 0f || x(s) > size.width) continue
@@ -1331,10 +1398,11 @@ private fun WaveGraph(
                 path.lineTo(x(e), low)
             }
             path.lineTo(size.width, low)
+            drawPath(countIn, GuideGray.copy(alpha = 0.45f), style = Stroke(2.dp.toPx(), join = StrokeJoin.Round))
             drawPath(path, GuideGray, style = Stroke(2.dp.toPx(), join = StrokeJoin.Round))
 
             // Surprises still to take, bobbing above their waves
-            for (n in from..to) {
+            for (n in from.coerceAtLeast(0)..to) {
                 val s = surprises[n] ?: continue
                 if (n in p.collectedNotes) continue
                 val c = Offset(x(schedule.noteStart(n) + schedule.noteMs(n) / 2), high - 11.dp.toPx() + 2.dp.toPx() * sin(now / 220f + n))
@@ -1350,18 +1418,27 @@ private fun WaveGraph(
             drawSurprise(p.fxType, c, 1f + 0.6f * f, 1f - f)
         }
 
-        // The "now" line, and a marker on it that slides down as the next wave comes: it reaches
-        // the top of the wave just as the note starts (hidden in the Fog)
+        // The "now" line, and a marker on it that moves like the player's finger: when a note
+        // ends it lifts quickly off the wave, then comes down, faster and faster, to reach the top
+        // of the next wave just as it starts (hidden in the Fog)
         drawLine(Ink.copy(alpha = 0.7f), Offset(nowX, 0f), Offset(nowX, size.height), strokeWidth = 1.5.dp.toPx())
         if (!fogged) {
-            val inNoteNow = now >= schedule.t0 && k < schedule.total && now - schedule.noteStart(k) < schedule.noteMs(k)
+            val inNoteNow = k < schedule.total && now - schedule.noteStart(k) < schedule.noteMs(k)
             val markerY: Float? = if (inNoteNow) high else {
-                val next = if (now < schedule.t0) 0 else k + 1
+                val next = k + 1
                 if (next >= schedule.total) null else {
-                    val start = if (now < schedule.t0) schedule.countInStart else schedule.noteStart(k) + schedule.noteMs(k)
+                    val start = schedule.noteStart(k) + schedule.noteMs(k)
                     val end = schedule.noteStart(next)
                     val f = ((now - start).toFloat() / (end - start)).coerceIn(0f, 1f)
-                    top + (high - top) * f
+                    val lift = 0.3f // share of the rest spent lifting
+                    if (f < lift) {
+                        val u = f / lift
+                        high - (high - top) * (1f - (1f - u) * (1f - u) * (1f - u)) // up, slowing at the top
+                    } else {
+                        val v = (f - lift) / (1f - lift)
+                        val a = 3.5f
+                        top + (high - top) * ((exp(a * v) - 1f) / (exp(a) - 1f)) // down, speeding up
+                    }
                 }
             }
             if (markerY != null) {
@@ -1441,11 +1518,11 @@ private fun manPose(p: TwoPlayer, now: Long): ManPose? {
         if (e < SLIP_MS) return ManPose(p.landAt.toDouble(), 1f, 0f, -30f * sin(PI.toFloat() * e / SLIP_MS), ManShape.SLIP, 0f)
         e -= SLIP_MS
         if (p.runTo > 0L) {
-            if (e < RUN_MS) {
-                val f = e.toDouble() / RUN_MS
+            if (e < p.runMs) {
+                val f = e.toDouble() / p.runMs
                 return ManPose(p.landAt + (p.runTo - p.landAt) * f, 1f, 0f, 8f, ManShape.RUN, e / 75f)
             }
-            e -= RUN_MS
+            e -= p.runMs
             if (e < CLIMB_MS) {
                 val f = e.toFloat() / CLIMB_MS
                 return ManPose(p.runTo.toDouble(), 1f - f, 0f, 6f, ManShape.CLIMB, e / 80f)
