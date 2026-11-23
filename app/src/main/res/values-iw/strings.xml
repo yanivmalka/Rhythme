@@ -238,4 +238,14 @@
     <string name="tp_stat_surprises">הפתעות</string>
     <string name="tp_imp_points">נקודות, לעומת המשחק הקודם</string>
     <string name="tp_imp_last_round">תווים טובים בסיבוב האחרון</string>
+    <string name="tp_vs">משחק נגד</string>
+    <string name="tp_vs_friend">חבר</string>
+    <string name="tp_vs_computer">המחשב</string>
+    <string name="tp_computer">מחשב</string>
+    <string name="tp_vs_computer_hint">החזיקו את הטלפון כרגיל. המחשב מנגן בערך כמוכם לאחרונה, וממשיך להתאים את עצמו ככל שתשתפרו.</string>
+    <string name="light_level">עוצמת האור: %1$d%%</string>
+    <string name="cd_cue_levels">עוצמות</string>
+    <string name="scale_auto">החלפת סולם כל כמה סבבים</string>
+    <string name="free_streak">%1$d ברצף!</string>
+    <string name="pitch_auto">אוטומטי (בהרמוניה)</string>
 </resources>

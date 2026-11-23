@@ -187,6 +187,8 @@ class TwoPlayer(
     scale: Scale
 ) {
     var name by mutableStateOf(name)
+    /** Played by the computer (solo game). */
+    var isBot by mutableStateOf(false)
     var instrument by mutableStateOf(instrument)
     var scale by mutableStateOf(scale)
     val skills = mutableStateListOf<Skill>().apply { addAll(skills) }
@@ -228,6 +230,20 @@ class TwoPlayer(
     internal val goodNotes = HashSet<Int>()      // ...and those played well (they speed the tempo up)
     internal val collectedNotes = HashSet<Int>() // surprises taken
     internal val marks = mutableStateListOf<Mark>()
+
+    // How this player has played lately (the computer plays about as well)
+    internal val recentOnsets = ArrayDeque<Long>()
+    internal val recentLengths = ArrayDeque<Float>() // |held / note - 1|
+    internal val recentHits = ArrayDeque<Boolean>()  // played the note, or missed it
+
+    internal fun track(onsetMs: Long?, lengthOff: Float?) {
+        recentHits.addLast(onsetMs != null)
+        if (onsetMs != null) recentOnsets.addLast(onsetMs)
+        if (lengthOff != null) recentLengths.addLast(lengthOff)
+        while (recentHits.size > 12) recentHits.removeFirst()
+        while (recentOnsets.size > 10) recentOnsets.removeFirst()
+        while (recentLengths.size > 10) recentLengths.removeFirst()
+    }
 
     // The running man: times are on the timeline (where on the wave), level 0 = on a wave, 1 = down
     internal var jumpAt by mutableLongStateOf(0L) // 0 = not on the graph yet
@@ -285,6 +301,7 @@ class TwoPlayer(
         coins = 0; bolts = 0; stars = 0
         pressAt = 0L; pressNote = -1; scaleStep = 0
         hit.clear(); goodNotes.clear(); collectedNotes.clear(); marks.clear()
+        recentOnsets.clear(); recentLengths.clear(); recentHits.clear()
         jumpAt = 0L; runTo = 0L; move = ManMove.NONE; moveAt = 0L; pendingCollect = -1; fxAt = 0L
         verdictRes = 0; popup = ""; shownAt = 0L; bonusText = ""; bonusAt = 0L
     }
@@ -376,6 +393,15 @@ fun TwoPlayerScreen(
     var tempoRises by remember { mutableStateOf(true) }
     var matchId by remember { mutableIntStateOf(0) }
     var lastMatchDone by remember { mutableStateOf(false) }
+    val computerName = stringResource(R.string.tp_computer)
+    var vsComputer by remember { mutableStateOf(false) }
+    fun setOpponent(computer: Boolean) {
+        vsComputer = computer
+        val p2 = players[1]
+        p2.isBot = computer
+        if (computer && (p2.name.isBlank() || p2.name == name2)) p2.name = computerName
+        if (!computer && p2.name == computerName) p2.name = name2
+    }
 
     DisposableEffect(Unit) {
         audioManager.stopTone()
@@ -402,7 +428,7 @@ fun TwoPlayerScreen(
 
     when (stage) {
         Stage.SETUP -> TwoPlayerSetup(
-            players, bpm, note, rounds, startPitch, tempoRises,
+            players, vsComputer, ::setOpponent, bpm, note, rounds, startPitch, tempoRises,
             onBpm = { bpm = Tempo.clamp(it) },
             onNote = { note = it },
             onRounds = { rounds = it },
@@ -436,6 +462,8 @@ fun TwoPlayerScreen(
 @Composable
 private fun TwoPlayerSetup(
     players: List<TwoPlayer>,
+    vsComputer: Boolean,
+    onOpponent: (Boolean) -> Unit,
     bpm: Int,
     note: NoteLength,
     rounds: Int,
@@ -471,8 +499,14 @@ private fun TwoPlayerSetup(
                 .padding(horizontal = 4.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Against a friend on the same phone, or alone against the computer
+            SetupLabel(R.string.tp_vs)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = !vsComputer, onClick = { onOpponent(false) }, label = { Text(stringResource(R.string.tp_vs_friend)) })
+                FilterChip(selected = vsComputer, onClick = { onOpponent(true) }, label = { Text(stringResource(R.string.tp_vs_computer)) })
+            }
             Text(
-                stringResource(R.string.tp_how),
+                stringResource(if (vsComputer) R.string.tp_vs_computer_hint else R.string.tp_how),
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -682,7 +716,7 @@ private fun TwoPlayerGame(
     /** The motor is shared: it plays the hold of whoever pressed last, then the other one's if still held. */
     fun holdVibration(t: Long) {
         if (!settings.vibrationEnabled) return
-        val holder = players.filter { it.pressAt > 0L }.maxByOrNull { it.pressAt }
+        val holder = players.filter { it.pressAt > 0L && !it.isBot }.maxByOrNull { it.pressAt }
         if (holder == null) haptics.endHold()
         else haptics.startHold(holder.pressAt, holder.pressNoteMs, playFrom = t)
     }
@@ -824,6 +858,7 @@ private fun TwoPlayerGame(
             else -> p.ok++
         }
         if (base >= POINTS_GOOD && off <= LENGTH_OK * g) p.goodNotes.add(k)
+        p.track(p.pressOnsetMs, off)
         // Played in the Fog, by feel alone: double points
         val mult = p.multiplier(t) * (if (p.pressBlind) 2 else 1)
         val points = (base + lengthBonus) * mult
@@ -947,6 +982,7 @@ private fun TwoPlayerGame(
                 players.forEach { p ->
                     if (k !in p.hit) {
                         p.missed++
+                        p.track(null, null)
                         if (k >= NOTES_PER_ROUND) p.combo = 0
                         p.show(R.string.tp_miss, "", t)
                     }
@@ -964,6 +1000,42 @@ private fun TwoPlayerGame(
         finished = true
     }
 
+    // The computer: plays each note about as well as the person has lately (start timing, length,
+    // misses), a little better when behind in points and a little worse when ahead
+    LaunchedEffect(Unit) {
+        val bot = players.firstOrNull { it.isBot } ?: return@LaunchedEffect
+        val human = players.first { !it.isBot }
+        val rnd = java.util.Random(startAt)
+        for (k in 0 until total) {
+            val onsets = human.recentOnsets
+            val avgOnset = if (onsets.size >= 3) onsets.map { abs(it).toDouble() }.average() else 45.0
+            val avgLength = if (human.recentLengths.size >= 3) human.recentLengths.average() else 0.12
+            val missRate = if (human.recentHits.size >= 4) human.recentHits.count { !it }.toDouble() / human.recentHits.size else 0.06
+            val lead = bot.score - human.score
+            val ease = when {
+                lead > 400 -> 1.3
+                lead < -400 -> 0.8
+                else -> 1.0
+            }
+            if (rnd.nextDouble() < (missRate * ease).coerceIn(0.02, 0.5)) continue
+            val cycle = schedule.round(k).cycleMs
+            val noteMs = schedule.noteMs(k)
+            val onset = (rnd.nextGaussian() * (avgOnset * ease).coerceIn(10.0, 180.0))
+                .toLong().coerceIn(-cycle * 2 / 5, cycle * 2 / 5)
+            val hold = (noteMs * (1.0 + rnd.nextGaussian() * (avgLength * ease).coerceIn(0.03, 0.4)))
+                .toLong().coerceIn(noteMs / 3, cycle * 4 / 5)
+            delay(schedule.noteStart(k) + onset - SystemClock.uptimeMillis())
+            if (finished) break
+            press(bot, SystemClock.uptimeMillis())
+            delay(hold)
+            release(bot, SystemClock.uptimeMillis())
+            // A charged skill goes out now and then
+            if (bot.charge >= CHARGE_PERFECTS && bot.skills.isNotEmpty() && rnd.nextDouble() < 0.4) {
+                fire(bot, bot.skills[rnd.nextInt(bot.skills.size)], SystemClock.uptimeMillis())
+            }
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             audio.stopTone()
@@ -978,16 +1050,18 @@ private fun TwoPlayerGame(
             .background(MaterialTheme.colorScheme.background)
             .safeDrawingPadding()
     ) {
-        // The far player's half faces them
+        // The far player's half faces them (the computer's half faces the player)
+        val bot = players[1].isBot
         PlayerHalf(
             players[1], now, schedule, surprises, settings.lightEnabled,
             onPress = { press(players[1], it) },
             onRelease = { release(players[1], it) },
             onFire = { fire(players[1], it, SystemClock.uptimeMillis()) },
+            interactive = !bot,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .rotate(180f)
+                .rotate(if (bot) 0f else 180f)
         )
         CenterStrip(players, now, schedule, beat, ts, roundCount, tempoChangeAt, onQuit)
         PlayerHalf(
@@ -1032,7 +1106,8 @@ private fun PlayerHalf(
     onPress: (Long) -> Unit,
     onRelease: (Long) -> Unit,
     onFire: (Skill) -> Unit,
-    modifier: Modifier
+    modifier: Modifier,
+    interactive: Boolean = true
 ) {
     val fogged = now < p.fogUntil
     val frozen = now < p.freezeUntil
@@ -1102,7 +1177,8 @@ private fun PlayerHalf(
                     .fillMaxHeight()
                     .aspectRatio(1f, matchHeightConstraintsFirst = true)
                     .semantics { contentDescription = padLabel }
-                    .pointerInput(Unit) {
+                    .pointerInput(interactive) {
+                        if (!interactive) return@pointerInput
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             down.consume()
@@ -1192,7 +1268,7 @@ private fun PlayerHalf(
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             p.skills.forEach { skill ->
-                SkillButton(skill, p.charge, p.color, Modifier.weight(1f)) { onFire(skill) }
+                SkillButton(skill, p.charge, p.color, Modifier.weight(1f), enabled = interactive) { onFire(skill) }
             }
         }
     }
@@ -1435,7 +1511,7 @@ private fun DrawScope.drawFigure(
 }
 
 @Composable
-private fun SkillButton(skill: Skill, charge: Int, color: Color, modifier: Modifier, onClick: () -> Unit) {
+private fun SkillButton(skill: Skill, charge: Int, color: Color, modifier: Modifier, enabled: Boolean = true, onClick: () -> Unit) {
     val ready = charge >= CHARGE_PERFECTS
     val shape = RoundedCornerShape(14.dp)
     val name = stringResource(skill.nameRes)
@@ -1445,7 +1521,7 @@ private fun SkillButton(skill: Skill, charge: Int, color: Color, modifier: Modif
             .clip(shape)
             .background(if (ready) color.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             .border(if (ready) 2.dp else 1.dp, if (ready) color else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), shape)
-            .clickable(enabled = ready, role = Role.Button, onClick = onClick),
+            .clickable(enabled = ready && enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         if (!ready) { // how far the skill has charged

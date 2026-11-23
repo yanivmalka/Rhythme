@@ -254,7 +254,7 @@ fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, hapticM
                 audioManager.playRestCue(settings.restPitch, volumeGain(settings.restVolume))
             }
             PitchTitle(R.string.rest_pitch_title)
-            PitchChips(settings.restPitch) {
+            PitchChips(settings.restPitch, allowAuto = true) {
                 settings.restPitch = it
                 audioManager.playRestCue(it, volumeGain(settings.restVolume))
             }
@@ -285,7 +285,7 @@ fun InstrumentScreen(settings: PlaySettings, audioManager: AudioManager, hapticM
         }
         if (settings.touchSound != TouchSound.OFF && settings.touchSound != TouchSound.CLICK) {
             PitchTitle(R.string.touch_pitch_title)
-            PitchChips(settings.touchPitch) {
+            PitchChips(settings.touchPitch, allowAuto = true) {
                 settings.touchPitch = it
                 audioManager.playTouchSound(settings.touchSound, it, volumeGain(settings.touchVolume))
             }
@@ -374,9 +374,17 @@ private fun PitchTitle(@StringRes title: Int) {
 /** The eight notes as chips; used for the held note and for the cue sounds. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PitchChips(selected: Int, onSelect: (Int) -> Unit) {
+private fun PitchChips(selected: Int, allowAuto: Boolean = false, onSelect: (Int) -> Unit) {
     val names = stringArrayResource(R.array.pitch_names)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Auto: a note that always fits the scale being played (see AUTO_PITCH)
+        if (allowAuto) {
+            FilterChip(
+                selected = selected == AUTO_PITCH,
+                onClick = { onSelect(AUTO_PITCH) },
+                label = { Text(stringResource(R.string.pitch_auto), fontSize = 16.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)) }
+            )
+        }
         names.forEachIndexed { i, name ->
             FilterChip(
                 selected = selected == i,

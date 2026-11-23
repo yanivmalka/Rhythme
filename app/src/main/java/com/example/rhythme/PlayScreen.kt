@@ -13,6 +13,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
@@ -43,6 +47,7 @@ import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TouchApp
@@ -56,6 +61,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -116,6 +122,9 @@ private const val MIN_HOLD_MS = 60L        // shorter presses are treated as acc
 private const val AUTO_STOP_MS = 60_000L   // playing stops by itself after this long without a press or a change
 private const val PANEL_HIDE_MS = 4000L    // the practice panel leaves after this long without a press
 private const val ONSET_OK_MS = 40L        // pressing this close to the guide's note counts as "on time"
+private const val SHOW_PRACTICE_PANEL = false // the panel that slides in from the top: off for now
+/** The press and rest sounds' note can follow the music: [PlaySettings.touchPitch] / restPitch = this. */
+const val AUTO_PITCH = -1
 
 private val PadBlue = Color(0.2f, 0.5f, 0.9f)
 internal val FillBlue = Color(0xFF6FB1FF) // the pad "fills" with this from the bottom
@@ -157,9 +166,11 @@ enum class TouchSound(@StringRes val nameRes: Int) {
  * Plays [sound] for a press ([release] = false) or, softer and lower, for letting go.
  * [pitchIndex] is the note chosen for it (see [PITCHES_HZ]); the bell rings an octave above.
  */
-fun AudioManager.playTouchSound(sound: TouchSound, pitchIndex: Int, volume: Float = 1f, release: Boolean = false) {
+fun AudioManager.playTouchSound(sound: TouchSound, pitchIndex: Int, volume: Float = 1f, release: Boolean = false, autoHz: Double? = null) {
     val level = (if (release) 0.14 else 0.3) * volume
-    val hz = PITCHES_HZ[pitchIndex.coerceIn(PITCHES_HZ.indices)] * if (release) 1.5 else 2.0
+    // Auto: a fifth above the note now playing, so the press sound is always in harmony with it
+    val base = if (pitchIndex == AUTO_PITCH) autoHz ?: (frequency * 1.5) else PITCHES_HZ[pitchIndex.coerceIn(PITCHES_HZ.indices)]
+    val hz = base * if (release) 1.5 else 2.0
     when (sound) {
         TouchSound.BELL -> playChime(doubleArrayOf(hz), level = level)
         TouchSound.DOUBLE_BELL -> playChime(doubleArrayOf(hz, hz * 1.5), gapMs = 70, level = level)
@@ -169,8 +180,11 @@ fun AudioManager.playTouchSound(sound: TouchSound, pitchIndex: Int, volume: Floa
 }
 
 /** A low, soft "dong" where a note ends and its rest begins, an octave below the chosen note. */
-fun AudioManager.playRestCue(pitchIndex: Int, volume: Float = 1f) =
-    playChime(doubleArrayOf(PITCHES_HZ[pitchIndex.coerceIn(PITCHES_HZ.indices)] / 2), level = 0.3 * volume)
+fun AudioManager.playRestCue(pitchIndex: Int, volume: Float = 1f, autoHz: Double? = null) {
+    // Auto: the root of the scale being played (an octave below it), in harmony with every step
+    val base = if (pitchIndex == AUTO_PITCH) autoHz ?: frequency else PITCHES_HZ[pitchIndex.coerceIn(PITCHES_HZ.indices)]
+    playChime(doubleArrayOf(base / 2), level = 0.3 * volume)
+}
 
 /** Where the volume sliders start: the sounds' normal level. */
 const val DEFAULT_VOLUME = 80
@@ -195,8 +209,11 @@ class PlaySettings(private val prefs: SharedPreferences) {
     private val click = mutableStateOf(prefs.getBoolean("beat_sound", true))
     private val demo = mutableStateOf(prefs.getBoolean("demo_mode", false))
     private val restCue = mutableStateOf(prefs.getBoolean("rest_sound", true))
-    private val restPitchState = mutableIntStateOf(prefs.getInt("rest_pitch", DEFAULT_PITCH).coerceIn(PITCHES_HZ.indices))
-    private val touchPitchState = mutableIntStateOf(prefs.getInt("touch_pitch", DEFAULT_PITCH).coerceIn(PITCHES_HZ.indices))
+    private val restPitchState = mutableIntStateOf(prefs.getInt("rest_pitch", DEFAULT_PITCH).coerceIn(AUTO_PITCH, PITCHES_HZ.lastIndex))
+    private val touchPitchState = mutableIntStateOf(prefs.getInt("touch_pitch", DEFAULT_PITCH).coerceIn(AUTO_PITCH, PITCHES_HZ.lastIndex))
+    private val scaleAutoState = mutableStateOf(prefs.getBoolean("scale_auto", false))
+    private val lightLevelState = mutableIntStateOf(prefs.getInt("light_level", 100).coerceIn(10, 100))
+    private val freeStarsState = mutableIntStateOf(prefs.getInt("free_stars", 0))
     private val vibStrength = mutableIntStateOf(prefs.getInt("vibration_strength", 100).coerceIn(10, 100))
     private val fade = mutableStateOf(prefs.getBoolean("beat_fade", false))
     private val volumes = mutableMapOf<String, androidx.compose.runtime.MutableIntState>()
@@ -222,6 +239,12 @@ class PlaySettings(private val prefs: SharedPreferences) {
     /** The note of the rest sound and of the press sound (indices into [PITCHES_HZ]). */
     var restPitch: Int get() = restPitchState.intValue; set(v) { restPitchState.intValue = v; prefs.edit().putInt("rest_pitch", v).apply() }
     var touchPitch: Int get() = touchPitchState.intValue; set(v) { touchPitchState.intValue = v; prefs.edit().putInt("touch_pitch", v).apply() }
+    /** The scale changes by itself every few passes up and down it. */
+    var scaleAuto: Boolean get() = scaleAutoState.value; set(v) { scaleAutoState.value = v; prefs.edit().putBoolean("scale_auto", v).apply() }
+    /** How bright the pad's light gets, 10..100 percent. */
+    var lightLevel: Int get() = lightLevelState.intValue; set(v) { lightLevelState.intValue = v; prefs.edit().putInt("light_level", v).apply() }
+    /** Stars collected in free play, kept across sessions. */
+    var freeStars: Int get() = freeStarsState.intValue; set(v) { freeStarsState.intValue = v; prefs.edit().putInt("free_stars", v).apply() }
     /** Vibration strength in percent, 10..100 (motors with amplitude control only). */
     var vibrationStrength: Int get() = vibStrength.intValue; set(v) { vibStrength.intValue = v; prefs.edit().putInt("vibration_strength", v).apply() }
     /** The beat grows quieter as the player locks in, down to silence. Off: the beat always plays. */
@@ -335,6 +358,14 @@ fun RhythmPlayScreen(
     }
     var celebrateStars by remember { mutableIntStateOf(0) } // > 0 shows the celebration
 
+    // Free play: a star for each good hold; good holds in a row reaching the next Fibonacci number
+    // (2, 3, 5, 8, 13...) earn that many bonus stars, with a bigger celebration each time
+    var freeStreak by remember { mutableIntStateOf(0) }
+    var freeLevel by remember { mutableIntStateOf(0) } // milestones reached in this streak
+    var bonusStars by remember { mutableIntStateOf(0) }
+    var bonusLevel by remember { mutableIntStateOf(0) }
+    val bonusBurst = remember { Animatable(0f) }
+
     // Swiping to another lesson keeps the beat going; only lesson-specific state resets
     LaunchedEffect(currentLesson?.id) {
         currentLesson?.timeSignature?.let { settings.timeSignature = it }
@@ -414,7 +445,21 @@ fun RhythmPlayScreen(
         scaleStep[0] = 0
         audioManager.frequency = PITCHES_HZ[pitchIndex]
     }
-    fun nextNoteHz(): Double = settings.scale.hz(PITCHES_HZ[pitchIndex], scaleStep[0]++)
+    // With "change the scale" on, after a few passes up and down (2 to 4, at random) the next
+    // note starts a different scale
+    val scalePasses = remember { intArrayOf(kotlin.random.Random.nextInt(2, 5)) }
+    fun nextNoteHz(): Double {
+        if (settings.scaleAuto) {
+            val sc = settings.scale
+            val period = if (sc.semitones.size < 2) 1 else 2 * (sc.semitones.size - 1)
+            if (scaleStep[0] >= period * scalePasses[0]) {
+                settings.scale = Scale.entries.filter { it != Scale.NONE && it != sc }.random()
+                scaleStep[0] = 0
+                scalePasses[0] = kotlin.random.Random.nextInt(2, 5)
+            }
+        }
+        return settings.scale.hz(PITCHES_HZ[pitchIndex], scaleStep[0]++)
+    }
     LaunchedEffect(settings.instrument) { audioManager.instrument = settings.instrument }
     LaunchedEffect(settings.vibrationStrength) { hapticManager.strength = settings.vibrationStrength / 100f }
     LaunchedEffect(settings.beatFade) { clickVolume = 1f }
@@ -510,11 +555,13 @@ fun RhythmPlayScreen(
         while (isHolding) {
             withFrameMillis { }
             val p = (SystemClock.uptimeMillis() - startTime).toFloat() / currentTargetMs
-            if (p.toInt() != lap) { // a new cycle: struck and plucked instruments sound again
+            if (p.toInt() != lap) { // a new cycle: the note sounds again
                 lap = p.toInt()
-                if (!demoMode) audioManager.strike()
+                if (!demoMode) audioManager.strike() else audioManager.strike2()
             }
-            if (!demoMode) audioManager.updateVolume(0.05f + 0.45f * (p - floor(p))) // tone + click stays within range
+            val swell = 0.05f + 0.45f * (p - floor(p)) // tone + click stays within range
+            // In imitate mode the first voice plays the guide's cues: the hold sounds on the second one
+            if (!demoMode) audioManager.updateVolume(swell) else audioManager.updateVolume2(swell * 0.7f)
         }
     }
 
@@ -572,7 +619,7 @@ fun RhythmPlayScreen(
                 // Optional, in both modes: a sound where the guide's note ends and its rest begins
                 if (soundEnabled && settings.restSound) scope.launch {
                     delay(noteMs)
-                    if (isPlaying) audioManager.playRestCue(settings.restPitch, volumeGain(settings.restVolume))
+                    if (isPlaying) audioManager.playRestCue(settings.restPitch, volumeGain(settings.restVolume), autoHz = PITCHES_HZ[pitchIndex])
                 }
                 if (demoMode) {
                     if (vibrationEnabled) hapticManager.cue()
@@ -654,48 +701,86 @@ fun RhythmPlayScreen(
             verticalArrangement = Arrangement.Top,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Top bar: toggles, tone pitch, lessons
+            // Top bar: menu, the cue toggles, mode, lessons. A long press on a cue toggle opens its
+            // level (and its other setting, if it has one).
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 4.dp),
+                    .padding(bottom = 14.dp), // room for the mode button's arrow under the row
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onOpenMenu, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.Menu, contentDescription = stringResource(R.string.cd_menu), modifier = Modifier.size(24.dp))
-            }
+                    Icon(Icons.Filled.Menu, contentDescription = stringResource(R.string.cd_menu), modifier = Modifier.size(24.dp))
+                }
 
-            IconButton(onClick = { soundEnabled = !soundEnabled }, modifier = Modifier.size(40.dp)) {
+                CueToggle(
+                    label = stringResource(R.string.cd_sound_toggle),
+                    onToggle = { soundEnabled = !soundEnabled },
+                    menu = {
+                        LevelSlider(stringResource(R.string.volume_tone, settings.toneVolume), settings.toneVolume) { settings.toneVolume = it }
+                        LevelSlider(stringResource(R.string.volume_rest, settings.restVolume), settings.restVolume) { settings.restVolume = it }
+                        LevelSlider(stringResource(R.string.volume_touch, settings.touchVolume), settings.touchVolume) { settings.touchVolume = it }
+                    }
+                ) {
                     Icon(
                         imageVector = if (soundEnabled) Icons.Filled.VolumeMute else Icons.Filled.VolumeOff,
-                        contentDescription = stringResource(R.string.cd_sound_toggle),
+                        contentDescription = null,
                         tint = if (soundEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                         modifier = Modifier.size(24.dp)
                     )
                 }
 
-                val vibrationLabel = stringResource(R.string.cd_vibration_toggle)
-                IconButton(
-                    onClick = { vibrationEnabled = !vibrationEnabled },
-                    modifier = Modifier.size(40.dp).semantics { contentDescription = vibrationLabel }
+                CueToggle(
+                    label = stringResource(R.string.cd_vibration_toggle),
+                    onToggle = { vibrationEnabled = !vibrationEnabled },
+                    menu = {
+                        if (hapticManager.hasAmplitudeControl) {
+                            LevelSlider(stringResource(R.string.vibration_strength_title, settings.vibrationStrength), settings.vibrationStrength, min = 10) {
+                                val v = ((it + 5) / 10) * 10
+                                if (v != settings.vibrationStrength) {
+                                    settings.vibrationStrength = v
+                                    hapticManager.strength = v / 100f
+                                    hapticManager.vibrate(60) // feel it
+                                }
+                            }
+                        } else {
+                            Text(stringResource(R.string.vibration_strength_fixed), fontSize = 14.sp, modifier = Modifier.padding(vertical = 8.dp))
+                        }
+                    }
                 ) {
                     Text("⚡", fontSize = 20.sp, modifier = Modifier.alpha(if (vibrationEnabled) 1f else 0.3f))
                 }
 
-                IconButton(onClick = { lightEnabled = !lightEnabled }, modifier = Modifier.size(40.dp)) {
+                CueToggle(
+                    label = stringResource(R.string.cd_light_toggle),
+                    onToggle = { lightEnabled = !lightEnabled },
+                    menu = {
+                        LevelSlider(stringResource(R.string.light_level, settings.lightLevel), settings.lightLevel, min = 10) { settings.lightLevel = it }
+                    }
+                ) {
                     Icon(
                         imageVector = Icons.Filled.Lightbulb,
-                        contentDescription = stringResource(R.string.cd_light_toggle),
+                        contentDescription = null,
                         tint = if (lightEnabled) Color.Yellow else MaterialTheme.colorScheme.surfaceVariant,
                         modifier = Modifier.size(24.dp)
                     )
                 }
 
-                IconButton(onClick = { settings.beatSound = !settings.beatSound }, modifier = Modifier.size(40.dp)) {
+                CueToggle(
+                    label = stringResource(R.string.cd_beat_sound),
+                    onToggle = { settings.beatSound = !settings.beatSound },
+                    menu = {
+                        LevelSlider(stringResource(R.string.volume_click, settings.clickVolume), settings.clickVolume) { settings.clickVolume = it }
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                            Text(stringResource(R.string.beat_fade_title), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Switch(checked = settings.beatFade, onCheckedChange = { settings.beatFade = it })
+                        }
+                    }
+                ) {
                     Icon(
                         imageVector = MetronomeIcon,
-                        contentDescription = stringResource(R.string.cd_beat_sound),
+                        contentDescription = null,
                         tint = if (settings.beatSound) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                         modifier = Modifier.size(24.dp)
                     )
@@ -724,8 +809,13 @@ fun RhythmPlayScreen(
                     stringResource(R.string.bpm_label, pendingBpm) + "  ·  " + Tempo.nameFor(pendingBpm),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
                     modifier = Modifier.weight(1f)
                 )
+                if (currentLesson == null) {
+                    Text("★ ${settings.freeStars}", fontSize = 14.sp, color = StarGold, maxLines = 1, modifier = Modifier.padding(end = 4.dp))
+                }
+                ScalePicker(settings.scale, settings.scaleAuto, onSelect = { settings.scale = it }, onAuto = { settings.scaleAuto = it })
                 TimeSignaturePicker(timeSignature, onSelect = { settings.timeSignature = it })
                 if (isPlaying && clickVolume < 1f) {
                     Text(
@@ -791,6 +881,7 @@ fun RhythmPlayScreen(
             Spacer(modifier = Modifier.weight(1f))
 
             // Hold pad: beat ripple, progress ring, circle
+            val lightLevel = settings.lightLevel / 100f
             Box(
                 modifier = Modifier
                     .size(300.dp)
@@ -825,7 +916,13 @@ fun RhythmPlayScreen(
                                     // The player's own press, told apart from the guide's cue by every
                                     // sense: a bell (not the tone), two light taps (not one firm one),
                                     // a gold rim (not the white flash)
-                                    if (soundEnabled) audioManager.playTouchSound(settings.touchSound, settings.touchPitch, volumeGain(settings.touchVolume))
+                                    if (soundEnabled) {
+                                        audioManager.playTouchSound(settings.touchSound, settings.touchPitch, volumeGain(settings.touchVolume))
+                                        // ...and the held note too, a fifth above the guide's, swelling each cycle
+                                        audioManager.instrument2 = settings.instrument
+                                        audioManager.frequency2 = audioManager.frequency * 1.5
+                                        audioManager.startTone2(0.05f)
+                                    }
                                     if (vibrationEnabled) hapticManager.touch()
                                     if (lightEnabled) scope.launch {
                                         touchFlash.snapTo(1f)
@@ -921,6 +1018,7 @@ fun RhythmPlayScreen(
                                     isHolding = false // screen went away mid-hold: silence everything
                                     if (presses.isNotEmpty()) presses.removeAt(presses.lastIndex)
                                     audioManager.stopTone()
+                                    audioManager.stopTone2()
                                     hapticManager.stop()
                                     throw e
                                 }
@@ -928,6 +1026,7 @@ fun RhythmPlayScreen(
                                 val heldMs = releaseTime - startTime
                                 isHolding = false
                                 audioManager.stopTone()
+                                audioManager.stopTone2()
                                 hapticManager.endHold()
                                 lastInteractionAt = SystemClock.uptimeMillis()
                                 lastActivityAt = lastInteractionAt
@@ -971,6 +1070,38 @@ fun RhythmPlayScreen(
                                     val good = accuracy >= 0.8f && pressOnsetError <= ONSET_TOLERANCE
                                     val next = if (good) clickVolume - 0.2f else clickVolume + 0.4f
                                     clickVolume = (next * 10).roundToInt().coerceIn(0, 10) / 10f // whole steps: reaches exactly 0
+                                }
+
+                                if (lesson == null) {
+                                    val good = accuracy >= 0.8f && (onsetMs == null || abs(onsetMs) <= ONSET_OK_MS * 2)
+                                    if (good) {
+                                        freeStreak++
+                                        settings.freeStars = settings.freeStars + 1
+                                        if (freeStreak == fibonacciMilestone(freeLevel)) {
+                                            freeLevel++
+                                            bonusStars = freeStreak
+                                            bonusLevel = freeLevel
+                                            settings.freeStars = settings.freeStars + freeStreak
+                                            // The excitement grows with every milestone: a longer, quicker run of
+                                            // notes, then the buzz, then more stars flying out
+                                            if (soundEnabled) {
+                                                val count = (2 + freeLevel).coerceAtMost(9)
+                                                audioManager.playChime(
+                                                    DoubleArray(count) { Scale.MAJOR.hz(523.25, it) },
+                                                    gapMs = (110 - freeLevel * 8).coerceAtLeast(55),
+                                                    level = (0.18 + 0.02 * freeLevel).coerceAtMost(0.3)
+                                                )
+                                            }
+                                            if (vibrationEnabled && freeLevel >= 3) hapticManager.celebrate()
+                                            scope.launch {
+                                                bonusBurst.snapTo(0f)
+                                                bonusBurst.animateTo(1f, animationSpec = tween(durationMillis = 900 + 120 * freeLevel.coerceAtMost(6)))
+                                            }
+                                        }
+                                    } else {
+                                        freeStreak = 0
+                                        freeLevel = 0
+                                    }
                                 }
 
                                 lesson?.let { l ->
@@ -1111,14 +1242,14 @@ fun RhythmPlayScreen(
                                 val below = look.under ?: PadBlue
                                 if (look.under != null) drawRect(below)
                                 val top = size.height * (1f - look.fraction)
-                                val glow = if (demoMode) 1f else 0.35f + 0.65f * look.fraction // dim to bright, like the tone
+                                val glow = (if (demoMode) 1f else 0.35f + 0.65f * look.fraction) * lightLevel // dim to bright, like the tone
                                 drawRect(lerp(below, look.fill, glow), topLeft = Offset(0f, top), size = Size(size.width, size.height - top))
                             }
                             val f = flash.value
-                            if (f > 0f) drawRect(Color.White.copy(alpha = 0.55f * f)) // demo: a note starts
+                            if (f > 0f) drawRect(Color.White.copy(alpha = 0.55f * f * lightLevel)) // demo: a note starts
                             val tf = touchFlash.value
                             if (tf > 0f) drawCircle( // demo: the player's own press
-                                StarGold.copy(alpha = tf),
+                                StarGold.copy(alpha = tf * lightLevel),
                                 radius = size.minDimension / 2 - 7.dp.toPx(),
                                 style = Stroke(14.dp.toPx())
                             )
@@ -1137,6 +1268,27 @@ fun RhythmPlayScreen(
                         demoMode = demoMode,
                         targetSeconds = targetMs / 1000.0
                     )
+                }
+
+                // Free play bonus: stars fly out of the pad, more of them at every milestone
+                val burst = bonusBurst.value
+                if (burst > 0f && burst < 1f) {
+                    Canvas(Modifier.size(300.dp)) {
+                        val n = 5 + 3 * bonusLevel.coerceAtMost(7)
+                        val reach = size.minDimension * (0.3f + 0.25f * burst)
+                        for (i in 0 until n) {
+                            val ang = 2.0 * Math.PI * i / n + bonusLevel
+                            val c = Offset(
+                                center.x + reach * kotlin.math.cos(ang).toFloat(),
+                                center.y + reach * kotlin.math.sin(ang).toFloat()
+                            )
+                            drawStar(c, 7.dp.toPx() * (1f + 0.15f * bonusLevel.coerceAtMost(6)), StarGold.copy(alpha = 1f - burst))
+                        }
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.alpha((1.6f - burst * 1.6f).coerceIn(0f, 1f))) {
+                        Text("+$bonusStars ★", color = StarGold, fontSize = (26 + 3 * bonusLevel.coerceAtMost(6)).sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Text(stringResource(R.string.free_streak, bonusStars), color = Color.White, fontSize = 16.sp)
+                    }
                 }
             }
 
@@ -1219,7 +1371,7 @@ fun RhythmPlayScreen(
 
         // Practice panel: over the controls while practicing, so the time isn't under the finger
         PracticePanel(
-            visible = panelShown && !panelDismissed,
+            visible = SHOW_PRACTICE_PANEL && panelShown && !panelDismissed,
             onDismiss = { panelDismissed = true },
             bpm = playBpm,
             timeSignature = timeSignature,
@@ -1315,6 +1467,28 @@ private fun TransportRow(
     }
 }
 
+/** The [level]-th milestone of a streak: the Fibonacci numbers from the third on, 2, 3, 5, 8, 13... */
+private fun fibonacciMilestone(level: Int): Int {
+    var a = 1
+    var b = 2
+    repeat(level) { val c = a + b; a = b; b = c }
+    return b
+}
+
+/** A five-pointed star at [c]. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStar(c: Offset, r: Float, color: Color) {
+    val path = androidx.compose.ui.graphics.Path()
+    for (i in 0 until 10) {
+        val rr = if (i % 2 == 0) r else r * 0.45f
+        val ang = -Math.PI / 2 + i * Math.PI / 5
+        val x = c.x + rr * kotlin.math.cos(ang).toFloat()
+        val y = c.y + rr * kotlin.math.sin(ang).toFloat()
+        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+    }
+    path.close()
+    drawPath(path, color)
+}
+
 /** Color of the next lap of the ring: a lighter shade of a dark color, a darker shade of a light one. */
 private fun lapShade(c: Color): Color =
     if (c.luminance() > 0.5f) lerp(c, Color.Black, 0.35f) else lerp(c, Color.White, 0.45f)
@@ -1340,15 +1514,19 @@ private fun ModeButton(demoMode: Boolean, onSelect: (Boolean) -> Unit) {
                 imageVector = if (demoMode) Icons.Filled.Visibility else Icons.Filled.TouchApp,
                 contentDescription = null,
                 tint = if (demoMode) StarGold else MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp).align(Alignment.TopCenter).padding(top = 2.dp)
-            )
-            Icon(
-                imageVector = Icons.Filled.ArrowDropDown,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp).align(Alignment.BottomCenter)
+                modifier = Modifier.size(24.dp)
             )
         }
+        // Under the button, in the room the row leaves below it
+        Icon(
+            imageVector = Icons.Filled.ArrowDropDown,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .size(18.dp)
+                .align(Alignment.BottomCenter)
+                .offset(y = 15.dp)
+        )
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             listOf(false to R.string.mode_follow_long, true to R.string.mode_demo_long).forEach { (demo, nameRes) ->
                 DropdownMenuItem(
@@ -1594,6 +1772,87 @@ private fun timingTip(history: List<HoldResult>): Int? {
         mean > 0.05 && late >= 4 -> R.string.tip_long
         mean < -0.05 && early >= 4 -> R.string.tip_short
         else -> null
+    }
+}
+
+/**
+ * A cue toggle of the top bar: a tap turns it on or off; a long press opens its [menu] (the
+ * level, and the other setting it has, if any).
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CueToggle(
+    label: String,
+    onToggle: () -> Unit,
+    menu: @Composable ColumnScope.() -> Unit,
+    icon: @Composable () -> Unit
+) {
+    var open by remember { mutableStateOf(false) }
+    val more = stringResource(R.string.cd_cue_levels)
+    Box {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .combinedClickable(onLongClickLabel = more, onLongClick = { open = true }, onClick = onToggle)
+                .semantics { contentDescription = label },
+            contentAlignment = Alignment.Center
+        ) { icon() }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Column(
+                Modifier
+                    .width(270.dp)
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            ) { menu() }
+        }
+    }
+}
+
+/** A titled 0..100 slider for a cue's level. */
+@Composable
+private fun LevelSlider(title: String, value: Int, min: Int = 0, onChange: (Int) -> Unit) {
+    Text(title, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
+    Slider(
+        value = value.toFloat(),
+        onValueChange = { onChange(it.roundToInt()) },
+        valueRange = min.toFloat()..100f
+    )
+}
+
+/** Chip with the scale the notes walk; tap to pick one, or let it change by itself every few rounds. */
+@Composable
+private fun ScalePicker(selected: Scale, auto: Boolean, onSelect: (Scale) -> Unit, onAuto: (Boolean) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val label = stringResource(R.string.scale_title)
+    Box(Modifier.padding(start = 4.dp)) {
+        Text(
+            (if (selected == Scale.NONE) "♪" else "♪ " + stringResource(selected.nameRes)) + if (auto) " ↻" else "",
+            fontSize = 14.sp,
+            maxLines = 1,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .border(1.dp, Ink.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                .clickable { open = true }
+                .semantics { contentDescription = label }
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Scale.entries.forEach { sc ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(sc.nameRes), color = if (sc == selected) MaterialTheme.colorScheme.primary else Color.Unspecified) },
+                    onClick = { open = false; onSelect(sc) }
+                )
+            }
+            DropdownMenuItem(
+                leadingIcon = {
+                    Icon(Icons.Filled.Shuffle, contentDescription = null,
+                        tint = if (auto) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                },
+                text = { Text(stringResource(R.string.scale_auto), color = if (auto) MaterialTheme.colorScheme.primary else Color.Unspecified) },
+                trailingIcon = { Switch(checked = auto, onCheckedChange = null) },
+                onClick = { onAuto(!auto) }
+            )
+        }
     }
 }
 

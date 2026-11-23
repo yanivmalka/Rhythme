@@ -320,7 +320,7 @@ class AudioManager {
                 } else {
                 for (k in weights.indices) if (weights[k] != 0f) wave += weights[k] * sin((k + 1) * phase)
                 when (voice.envelope) {
-                    Envelope.SUSTAIN -> Unit
+                    Envelope.SUSTAIN -> wave *= minOf(1.0, 0.3 + t / 0.04) // a soft attack: each new cycle is heard
                     Envelope.PIANO -> wave *= 0.35 + 0.65 * exp(-t * 4)
                     Envelope.BOWED -> {
                         wave *= minOf(1.0, 0.2 + t / 0.09)
@@ -356,7 +356,7 @@ class AudioManager {
                     } else {
                         for (k in weights2.indices) if (weights2[k] != 0f) wave2 += weights2[k] * sin((k + 1) * phase2)
                         when (voice2.envelope) {
-                            Envelope.SUSTAIN -> Unit
+                            Envelope.SUSTAIN -> wave2 *= minOf(1.0, 0.3 + t2 / 0.04)
                             Envelope.PIANO -> wave2 *= 0.35 + 0.65 * exp(-t2 * 4)
                             Envelope.BOWED -> {
                                 wave2 *= minOf(1.0, 0.2 + t2 / 0.09)

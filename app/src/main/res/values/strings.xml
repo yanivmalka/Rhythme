@@ -242,4 +242,14 @@
     <string name="tp_stat_surprises">Surprises</string>
     <string name="tp_imp_points">Points, vs the last match</string>
     <string name="tp_imp_last_round">Good notes in the last round</string>
+    <string name="tp_vs">Play against</string>
+    <string name="tp_vs_friend">A friend</string>
+    <string name="tp_vs_computer">The computer</string>
+    <string name="tp_computer">Computer</string>
+    <string name="tp_vs_computer_hint">Hold the phone as usual. The computer plays about as well as you do lately, and keeps adjusting as you get better.</string>
+    <string name="light_level">Light brightness: %1$d%%</string>
+    <string name="cd_cue_levels">Levels</string>
+    <string name="scale_auto">Change the scale every few rounds</string>
+    <string name="free_streak">%1$d in a row!</string>
+    <string name="pitch_auto">Auto (in harmony)</string>
 </resources>

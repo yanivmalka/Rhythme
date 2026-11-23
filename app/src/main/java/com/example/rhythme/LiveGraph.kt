@@ -16,7 +16,7 @@ import kotlin.math.floor
 import kotlin.math.roundToLong
 
 /** Where "now" sits across the graph: the past before it, the upcoming guide after it. */
-const val GRAPH_NOW_AT = 0.72f
+const val GRAPH_NOW_AT = 0.75f // two beats of what is coming ahead of it (8 shown), like a count-in
 
 /**
  * A stretch of the guide rhythm: from [at] on, notes of [noteMs] alternate with rests of
@@ -58,7 +58,6 @@ fun LiveGraph(
     windowMs: Long,
     modifier: Modifier = Modifier
 ) {
-    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     Canvas(modifier) {
         val t0 = now().toDouble()
         val w = size.width
@@ -67,11 +66,9 @@ fun LiveGraph(
         val nowX = w * GRAPH_NOW_AT
         val tMin = t0 - nowX / pxPerMs
         val tMax = t0 + (w - nowX) / pxPerMs
-        // Time runs in the reading direction: left to right, right to left in RTL
-        fun x(t: Double): Float {
-            val ltr = nowX + ((t - t0) * pxPerMs).toFloat()
-            return if (rtl) w - ltr else ltr
-        }
+        // Time runs left to right in every language, as on the two-player screen: what comes
+        // flows in from the right toward the "now" line
+        fun x(t: Double): Float = nowX + ((t - t0) * pxPerMs).toFloat()
 
         val low = h * 0.80f   // rest level, also the time axis
         val high = h * 0.18f  // note level
@@ -80,8 +77,8 @@ fun LiveGraph(
 
         // Axes: time along the bottom, level at the start edge with a tick for "rest" and "note"
         drawLine(axis, Offset(0f, low), Offset(w, low), strokeWidth = thin)
-        val edge = if (rtl) w else 0f
-        val inward = if (rtl) -1f else 1f
+        val edge = 0f
+        val inward = 1f
         drawLine(axis, Offset(edge, high - 4.dp.toPx()), Offset(edge, low), strokeWidth = thin)
         drawLine(axis, Offset(edge, high), Offset(edge + inward * 5.dp.toPx(), high), strokeWidth = thin)
 
