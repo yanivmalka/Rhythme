@@ -208,7 +208,7 @@
     <string name="tp_slower">Slower</string>
     <string name="tp_faster">Faster</string>
     <string name="tp_rounds">%1$d rounds</string>
-    <string name="tp_points_help">Perfect start 100 · good 50 · right length +50. 8, 16 and 32 good notes in a row: ×2, ×3, ×4. Every 8 perfect notes charge a skill. Notes played in the Fog, by feel alone, score double.</string>
+    <string name="tp_points_help">Perfect start 100 · good 50 · right length +50. 8, 16 and 32 good notes in a row: ×2, ×3, ×4. Every 8 perfect notes charge a skill. Notes played in the Fog, by feel alone, score double. The first two rounds are a warm-up with wider timing. The running man collects the surprises on the waves he lands on: coins (each worth more than the last), bolts that charge your skills, and stars that add to your combo.</string>
     <string name="tp_start">Start</string>
     <string name="tp_cd_pad">%1$s\'s pad: press and hold</string>
     <string name="tp_fog_label">Fog\nplay by feel</string>
@@ -235,4 +235,11 @@
     <string name="tp_short">Too short</string>
     <string name="tp_tempo_rises">Tempo rises when you both play well</string>
     <string name="tp_scale">Each new note walks up the scale</string>
+    <string name="tp_player_sound">Sound</string>
+    <string name="tp_player_scale">Scale</string>
+    <string name="tp_start_note">Starting note</string>
+    <string name="tp_warmup">warm-up</string>
+    <string name="tp_stat_surprises">Surprises</string>
+    <string name="tp_imp_points">Points, vs the last match</string>
+    <string name="tp_imp_last_round">Good notes in the last round</string>
 </resources>

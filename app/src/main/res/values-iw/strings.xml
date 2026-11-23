@@ -204,7 +204,7 @@
     <string name="tp_slower">לאט יותר</string>
     <string name="tp_faster">מהר יותר</string>
     <string name="tp_rounds">%1$d סיבובים</string>
-    <string name="tp_points_help">פתיחה מושלמת 100 · טובה 50 · אורך נכון ‎+50. ‏8, 16 ו-32 תווים טובים ברצף: ×2, ×3, ×4. כל 8 תווים מושלמים טוענים כישור. תווים שמנוגנים בערפל, בתחושה בלבד, שווים כפול.</string>
+    <string name="tp_points_help">פתיחה מושלמת 100 · טובה 50 · אורך נכון ‎+50. ‏8, 16 ו-32 תווים טובים ברצף: ×2, ×3, ×4. כל 8 תווים מושלמים טוענים כישור. תווים שמנוגנים בערפל, בתחושה בלבד, שווים כפול. שני הסיבובים הראשונים הם חימום עם זמנים מקלים. האיש הרץ אוסף את ההפתעות שעל הגלים שהוא נוחת עליהם: מטבעות (כל אחד שווה יותר מהקודם), ברקים שטוענים כישורים, וכוכבים שמוסיפים לרצף.</string>
     <string name="tp_start">התחלה</string>
     <string name="tp_cd_pad">המשטח של %1$s: לחצו והחזיקו</string>
     <string name="tp_fog_label">ערפל\nנגנו בתחושה</string>
@@ -231,4 +231,11 @@
     <string name="tp_short">קצר מדי</string>
     <string name="tp_tempo_rises">הקצב עולה כששניכם מנגנים טוב</string>
     <string name="tp_scale">כל תו חדש עולה בסולם</string>
+    <string name="tp_player_sound">צליל</string>
+    <string name="tp_player_scale">סולם</string>
+    <string name="tp_start_note">תו פתיחה</string>
+    <string name="tp_warmup">חימום</string>
+    <string name="tp_stat_surprises">הפתעות</string>
+    <string name="tp_imp_points">נקודות, לעומת המשחק הקודם</string>
+    <string name="tp_imp_last_round">תווים טובים בסיבוב האחרון</string>
 </resources>

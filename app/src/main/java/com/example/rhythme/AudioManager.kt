@@ -75,11 +75,12 @@ class AudioManager {
     @Volatile private var toneVolume = 0.3f
     /** The player's volume choice for the held note and the demo's cue tone; 1 = normal. */
     @Volatile var toneLevel = 1f
-    // A second, synthesized voice that can sound together with the first: the other player's
-    // held note in two-player mode. Its timbre is given as harmonic weights (see Instrument.weights).
+    // A second voice that can sound together with the first: the other player's held note in
+    // two-player mode. It plays any instrument, recordings included, just like the first one.
     @Volatile var frequency2 = 330.0
-    @Volatile var voice2Weights: FloatArray = Instrument.ORGAN.weights
+    @Volatile var instrument2 = Instrument.ORGAN
     @Volatile private var tone2On = false
+    private val strike2Requested = AtomicBoolean(false)
     @Volatile private var tone2Volume = 0.3f
     private val clickRequested = AtomicBoolean(false)
     private val strikeRequested = AtomicBoolean(false)
@@ -187,6 +188,11 @@ class AudioManager {
         tone2On = false
     }
 
+    /** The second voice's [strike]: a new hit or pluck at each cycle of a long hold. */
+    fun strike2() {
+        strike2Requested.set(true)
+    }
+
     /** [accent]: 0 normal, 1 medium, 2 strong (first beat of the bar). */
     fun playClick(volume: Float = 1f, accent: Int = 0) {
         clickVolume = volume.coerceIn(0f, 2f)
@@ -240,6 +246,11 @@ class AudioManager {
         var gain = 0f
         var phase2 = 0.0
         var gain2 = 0f
+        var sample2: Sample? = null
+        var samplePos2 = 0.0
+        var wasOn2 = false
+        var tone2Samples = 0
+        var noise2 = 54321
         var wasOn = false
         var toneSamples = 0 // since the current note started (for the envelopes)
         var noise = 12345
@@ -274,9 +285,23 @@ class AudioManager {
             val fall = if (playing != null) releaseStep else rampStep
             val target = if (!on) 0f else (if (voice.percussive) 0.45f else toneVolume) * toneLevel
             val weights = voice.weights
-            val weights2 = voice2Weights
+            // The second voice, set up the same way as the first
+            val on2 = tone2On
+            val voice2 = instrument2
+            if (strike2Requested.getAndSet(false) || (on2 && !wasOn2)) {
+                tone2Samples = 0
+                samplePos2 = 0.0
+                val hz = frequency2
+                sample2 = voice2.sampleName?.let { samples[it] }
+                    ?.minByOrNull { kotlin.math.abs(kotlin.math.ln(hz / it.hz)) }
+            }
+            wasOn2 = on2
+            val playing2 = sample2
+            val sampleStep2 = if (playing2 != null) playing2.rate.toDouble() / sampleRate * frequency2 / playing2.hz else 0.0
+            val fall2 = if (playing2 != null) releaseStep else rampStep
+            val target2 = if (!on2) 0f else (if (voice2.percussive) 0.45f else tone2Volume) * toneLevel
+            val weights2 = voice2.weights
             val phaseStep2 = 2.0 * PI * frequency2 / sampleRate
-            val target2 = if (tone2On) tone2Volume * toneLevel else 0f
             for (i in 0 until chunkSize) {
                 gain += (target - gain).coerceIn(-fall, rampStep)
                 var wave = 0.0
@@ -315,11 +340,40 @@ class AudioManager {
                 phase += phaseStep * bend
                 if (phase > 2.0 * PI) phase -= 2.0 * PI
                 if (gain2 > 0f || target2 > 0f) { // the second voice
-                    gain2 += (target2 - gain2).coerceIn(-rampStep, rampStep)
+                    gain2 += (target2 - gain2).coerceIn(-fall2, rampStep)
                     var wave2 = 0.0
-                    for (k in weights2.indices) if (weights2[k] != 0f) wave2 += weights2[k] * sin((k + 1) * phase2)
+                    val t2 = tone2Samples.toDouble() / sampleRate
+                    var bend2 = 1.0
+                    if (playing2 != null) {
+                        val d = playing2.data
+                        val ip = samplePos2.toInt()
+                        if (ip < d.size) {
+                            val next = if (ip + 1 < d.size) d[ip + 1] else if (playing2.loopEnd > 0) d[playing2.loopStart] else 0f
+                            wave2 = d[ip] + (next - d[ip]) * (samplePos2 - ip)
+                        }
+                        samplePos2 += sampleStep2
+                        if (playing2.loopEnd > 0 && samplePos2 >= playing2.loopEnd) samplePos2 -= playing2.loopEnd - playing2.loopStart
+                    } else {
+                        for (k in weights2.indices) if (weights2[k] != 0f) wave2 += weights2[k] * sin((k + 1) * phase2)
+                        when (voice2.envelope) {
+                            Envelope.SUSTAIN -> Unit
+                            Envelope.PIANO -> wave2 *= 0.35 + 0.65 * exp(-t2 * 4)
+                            Envelope.BOWED -> {
+                                wave2 *= minOf(1.0, 0.2 + t2 / 0.09)
+                                bend2 = 1.0 + 0.006 * minOf(1.0, t2 / 0.35) * sin(2 * PI * 5.5 * t2)
+                            }
+                            Envelope.PLUCK -> wave2 *= 0.08 + 0.92 * exp(-t2 * 5)
+                            Envelope.DRUM -> {
+                                noise2 = noise2 * 1103515245 + 12345
+                                val hiss = (noise2 shr 16 and 0x7fff) / 16384.0 - 1.0
+                                wave2 = wave2 * exp(-t2 * 13) + hiss * 0.55 * exp(-t2 * 55)
+                                bend2 = 0.5 + 0.5 * exp(-t2 * 30)
+                            }
+                        }
+                    }
+                    tone2Samples++
                     s += (wave2 * gain2).toFloat()
-                    phase2 += phaseStep2
+                    phase2 += phaseStep2 * bend2
                     if (phase2 > 2.0 * PI) phase2 -= 2.0 * PI
                 }
                 if (clickPos < click.size) s += click[clickPos++] * clickGain
